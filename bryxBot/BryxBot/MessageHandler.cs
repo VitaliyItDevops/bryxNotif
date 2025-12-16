@@ -438,30 +438,24 @@ public class MessageHandler
                 {
                     _allowedUsers = data.AllowedUsers;
                     _lastUsersUpdate = DateTime.UtcNow;
-                    _logger.LogInformation("Обновлён список разрешённых пользователей: {Count} пользователей", _allowedUsers.Count);
+                    _logger.LogInformation("Обновлён список разрешённых пользователей из БД: {Count} пользователей", _allowedUsers.Count);
+                }
+                else
+                {
+                    _allowedUsers.Clear();
+                    _logger.LogWarning("Список пользователей из БД пуст");
                 }
             }
             else
             {
-                _logger.LogWarning("Не удалось получить список пользователей из CRM. Статус: {StatusCode}", response.StatusCode);
-
-                // Fallback на статическую конфигурацию
-                if (_config.AllowedUsers != null && _config.AllowedUsers.Any())
-                {
-                    _allowedUsers = _config.AllowedUsers;
-                    _logger.LogInformation("Используется статический список из конфигурации");
-                }
+                _logger.LogError("Не удалось получить список пользователей из CRM. Статус: {StatusCode}. Доступ будет запрещён для всех.", response.StatusCode);
+                _allowedUsers.Clear();
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Ошибка при обновлении списка пользователей");
-
-            // Fallback на статическую конфигурацию
-            if (_config.AllowedUsers != null && _config.AllowedUsers.Any())
-            {
-                _allowedUsers = _config.AllowedUsers;
-            }
+            _logger.LogError(ex, "Ошибка при обновлении списка пользователей. Доступ будет запрещён для всех.");
+            _allowedUsers.Clear();
         }
     }
 
@@ -473,11 +467,20 @@ public class MessageHandler
             await RefreshAllowedUsersAsync();
         }
 
-        // Если список пуст, разрешаем всем (для обратной совместимости)
+        // Проверяем только по БД, без fallback
         if (_allowedUsers == null || !_allowedUsers.Any())
-            return true;
+        {
+            _logger.LogWarning("Список разрешённых пользователей пуст. ChatId {ChatId} не авторизован.", chatId);
+            return false;
+        }
 
-        return _allowedUsers.Contains(chatId.ToString());
+        var isAuthorized = _allowedUsers.Contains(chatId.ToString());
+        if (!isAuthorized)
+        {
+            _logger.LogWarning("ChatId {ChatId} не найден в списке разрешённых пользователей", chatId);
+        }
+
+        return isAuthorized;
     }
 }
 
