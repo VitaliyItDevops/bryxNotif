@@ -31,9 +31,9 @@ RUN apt-get update && \
 # Copy published app
 COPY --from=build /app/publish .
 
-# Expose port (Railway uses PORT env variable)
-ENV ASPNETCORE_URLS=http://+:8080
-EXPOSE 8080
+# Railway dynamically assigns PORT via environment variable
+# Application reads PORT in Program.cs and uses it with UseUrls()
+# Don't set ASPNETCORE_URLS here as it overrides UseUrls()
 
 # Start application
 ENTRYPOINT ["dotnet", "bryx_CRM.dll"]
