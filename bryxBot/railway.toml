@@ -2,18 +2,18 @@
 # This is a separate service from CRM
 
 [build]
-builder = "NIXPACKS"
-buildCommand = "dotnet publish BryxBot/BryxBot.csproj -c Release -o /app/publish"
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "dotnet /app/publish/BryxBot.dll"
+startCommand = "dotnet BryxBot.dll"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
 
 # ============================================
 # Environment Variables for Bot
 # ============================================
-# These will be set in Railway dashboard:
+# Set these in Railway dashboard:
 # - BOT_TOKEN (Telegram bot token)
 # - CRM_API_URL (URL of your CRM service, e.g., https://your-crm.railway.app/api/bot/)
 # - ALLOWED_USERS (comma-separated Telegram IDs)
