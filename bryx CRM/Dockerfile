@@ -1,16 +1,17 @@
 # Railway Dockerfile for bryx CRM with PostgreSQL client tools
+# This Dockerfile is executed from repository root by Railway
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 
-# Copy project files
-COPY ["bryx CRM/bryx CRM.csproj", "bryx CRM/"]
-RUN dotnet restore "bryx CRM/bryx CRM.csproj"
+# Copy project file (relative to repo root where Railway executes)
+COPY ["bryx CRM/bryx CRM/bryx CRM.csproj", "bryx CRM/bryx CRM/"]
+RUN dotnet restore "bryx CRM/bryx CRM/bryx CRM.csproj"
 
-# Copy source code
-COPY . .
+# Copy all source code from bryx CRM directory
+COPY ["bryx CRM/", "bryx CRM/"]
 
 # Build and publish
-WORKDIR "/src/bryx CRM"
+WORKDIR "/src/bryx CRM/bryx CRM"
 RUN dotnet publish "bryx CRM.csproj" -c Release -o /app/publish
 
 # Runtime stage
