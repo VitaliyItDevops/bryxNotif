@@ -33,20 +33,24 @@ public class MessageHandler
 
     public async Task HandleMessage(ITelegramBotClient botClient, Message message, CancellationToken cancellationToken)
     {
-        if (message.Text is not { } messageText)
+        if (message.Text is not { } messageText || message.From == null)
             return;
 
         var chatId = message.Chat.Id;
+        var username = message.From.Username;
+        var userId = message.From.Id;
 
-        _logger.LogInformation("Получено сообщение от {ChatId}: {MessageText}", chatId, messageText);
+        _logger.LogInformation("Получено сообщение от @{Username} (ID: {UserId}): {MessageText}",
+            username ?? "без_username", userId, messageText);
 
-        // Проверка авторизации
-        if (!await IsUserAuthorizedAsync(chatId))
+        // Проверка авторизации по username
+        if (!await IsUserAuthorizedAsync(username))
         {
-            _logger.LogWarning("Неавторизованная попытка доступа от {ChatId}", chatId);
+            _logger.LogWarning("Неавторизованная попытка доступа от @{Username} (ID: {UserId})",
+                username ?? "без_username", userId);
             await botClient.SendMessage(
                 chatId: chatId,
-                text: "⛔ Доступ запрещен. Этот бот предназначен только для авторизованных пользователей.",
+                text: "⛔ Доступ запрещен. Обратитесь к администратору для добавления вашего @username в список разрешённых пользователей.",
                 cancellationToken: cancellationToken
             );
             return;
@@ -325,20 +329,23 @@ public class MessageHandler
 
     public async Task HandleCallbackQuery(ITelegramBotClient botClient, CallbackQuery callbackQuery, CancellationToken cancellationToken)
     {
-        if (callbackQuery.Data == null || callbackQuery.Message == null)
+        if (callbackQuery.Data == null || callbackQuery.Message == null || callbackQuery.From == null)
             return;
 
-        var chatId = callbackQuery.Message.Chat.Id;
+        var username = callbackQuery.From.Username;
+        var userId = callbackQuery.From.Id;
 
-        _logger.LogInformation("Получен callback: {Data}", callbackQuery.Data);
+        _logger.LogInformation("Получен callback: {Data} от пользователя @{Username} (ID: {UserId})",
+            callbackQuery.Data, username ?? "без_username", userId);
 
-        // Проверка авторизации
-        if (!await IsUserAuthorizedAsync(chatId))
+        // Проверка авторизации по username
+        if (!await IsUserAuthorizedAsync(username))
         {
-            _logger.LogWarning("Неавторизованная попытка callback от {ChatId}", chatId);
+            _logger.LogWarning("Неавторизованная попытка callback от @{Username} (ID: {UserId})",
+                username ?? "без_username", userId);
             await botClient.AnswerCallbackQuery(
                 callbackQuery.Id,
-                "⛔ Доступ запрещен",
+                "⛔ Доступ запрещен. Обратитесь к администратору для добавления вашего @username в список разрешённых пользователей.",
                 showAlert: true,
                 cancellationToken: cancellationToken
             );
@@ -459,7 +466,7 @@ public class MessageHandler
         }
     }
 
-    private async Task<bool> IsUserAuthorizedAsync(long chatId)
+    private async Task<bool> IsUserAuthorizedAsync(string? username)
     {
         // Обновляем список пользователей, если прошло достаточно времени
         if (DateTime.UtcNow - _lastUsersUpdate > _usersUpdateInterval)
@@ -467,17 +474,27 @@ public class MessageHandler
             await RefreshAllowedUsersAsync();
         }
 
-        // Проверяем только по БД, без fallback
-        if (_allowedUsers == null || !_allowedUsers.Any())
+        // Если у пользователя нет username, отказываем в доступе
+        if (string.IsNullOrEmpty(username))
         {
-            _logger.LogWarning("Список разрешённых пользователей пуст. ChatId {ChatId} не авторизован.", chatId);
+            _logger.LogWarning("Пользователь без username пытается получить доступ");
             return false;
         }
 
-        var isAuthorized = _allowedUsers.Contains(chatId.ToString());
+        // Проверяем только по БД, без fallback
+        if (_allowedUsers == null || !_allowedUsers.Any())
+        {
+            _logger.LogWarning("Список разрешённых пользователей пуст. @{Username} не авторизован.", username);
+            return false;
+        }
+
+        // Сравниваем username без учета регистра и без @
+        var normalizedUsername = username.TrimStart('@').ToLower();
+        var isAuthorized = _allowedUsers.Any(u => u.TrimStart('@').ToLower() == normalizedUsername);
+
         if (!isAuthorized)
         {
-            _logger.LogWarning("ChatId {ChatId} не найден в списке разрешённых пользователей", chatId);
+            _logger.LogWarning("@{Username} не найден в списке разрешённых пользователей", username);
         }
 
         return isAuthorized;

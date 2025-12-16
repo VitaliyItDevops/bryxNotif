@@ -6,9 +6,11 @@ public class BotUser
 {
     public int Id { get; set; }
 
-    [Required]
     [StringLength(100)]
-    public string ChatId { get; set; } = string.Empty;
+    public string? ChatId { get; set; }
+
+    [StringLength(100)]
+    public string? Username { get; set; }
 
     [StringLength(200)]
     public string? Name { get; set; }

@@ -381,16 +381,21 @@ public class BotApiController : ControllerBase
         {
             await using var context = await _dbContextFactory.CreateDbContextAsync();
 
-            var allowedUsers = await context.BotUsers
+            var botUsers = await context.BotUsers
                 .Where(u => u.IsActive)
-                .Select(u => u.ChatId)
                 .ToListAsync();
+
+            // Возвращаем список username (приоритет) или ChatId (fallback для старых записей)
+            var allowedUsers = botUsers
+                .Select(u => !string.IsNullOrEmpty(u.Username) ? u.Username : u.ChatId)
+                .Where(id => !string.IsNullOrEmpty(id))
+                .ToList();
 
             _logger.LogInformation("Retrieved {Count} allowed bot users", allowedUsers.Count);
 
             return Ok(new
             {
-                allowedUsers = allowedUsers,
+                allowedUsers = allowedUsers!,
                 count = allowedUsers.Count
             });
         }
