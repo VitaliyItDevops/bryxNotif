@@ -130,6 +130,30 @@ builder.Services.AddScoped<BackupService>();
 // Автоматические бэкапы
 builder.Services.AddHostedService<AutoBackupHostedService>();
 
+// Настройка Telegram конфигурации из переменных окружения
+var telegramBotToken = Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN");
+var telegramChatId = Environment.GetEnvironmentVariable("TELEGRAM_CHAT_ID");
+
+if (!string.IsNullOrEmpty(telegramBotToken))
+{
+    builder.Configuration["TelegramBot:BotToken"] = telegramBotToken;
+    Console.WriteLine("✅ TELEGRAM_BOT_TOKEN loaded from environment");
+}
+else
+{
+    Console.WriteLine("⚠️ TELEGRAM_BOT_TOKEN not found in environment variables");
+}
+
+if (!string.IsNullOrEmpty(telegramChatId))
+{
+    builder.Configuration["TelegramBot:ChatId"] = telegramChatId;
+    Console.WriteLine("✅ TELEGRAM_CHAT_ID loaded from environment");
+}
+else
+{
+    Console.WriteLine("⚠️ TELEGRAM_CHAT_ID not found in environment variables");
+}
+
 // Telegram уведомления
 builder.Services.AddScoped<TelegramNotificationService>();
 
