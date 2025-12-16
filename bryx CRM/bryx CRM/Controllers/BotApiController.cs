@@ -1,5 +1,6 @@
 using bryx_CRM.Data;
 using bryx_CRM.Data.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -7,6 +8,7 @@ namespace bryx_CRM.Controllers;
 
 [ApiController]
 [Route("api/bot")]
+[AllowAnonymous]
 public class BotApiController : ControllerBase
 {
     private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
