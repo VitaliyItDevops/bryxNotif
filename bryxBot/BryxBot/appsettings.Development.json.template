@@ -1,0 +1,18 @@
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.Hosting.Lifetime": "Information"
+    }
+  },
+  "BotConfiguration": {
+    "BotToken": "YOUR_BOT_TOKEN_FROM_BOTFATHER",
+    "CrmApiUrl": "http://localhost:5092/api/bot/",
+    "AllowedUsers": ["YOUR_TELEGRAM_USER_ID"]
+  },
+  "Comments": {
+    "Instructions": "Скопируйте этот файл в appsettings.json и заполните реальными значениями",
+    "BotToken": "Получите токен от @BotFather в Telegram",
+    "AllowedUsers": "Получите ваш User ID от @userinfobot в Telegram"
+  }
+}

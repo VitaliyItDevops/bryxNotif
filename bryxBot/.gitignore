@@ -1,0 +1,44 @@
+## .NET
+
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# Visual Studio cache/options directory
+.vs/
+
+# User-specific files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Auto-generated files
+*.nuget.props
+*.nuget.targets
+
+# NuGet Packages
+*.nupkg
+*.snupkg
+**/packages/*
+
+# Sensitive configuration
+appsettings.json
+!appsettings.Development.json
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,99 @@
+.page {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+main {
+    flex: 1;
+    background-color: var(--apple-bg-primary);
+}
+
+/* Sidebar styles are now in NavMenu.razor.css */
+
+.top-row {
+    background-color: var(--apple-bg-secondary);
+    border-bottom: 1px solid var(--apple-border);
+    justify-content: flex-end;
+    height: 3.5rem;
+    display: flex;
+    align-items: center;
+    backdrop-filter: blur(20px);
+}
+
+    .top-row ::deep a, .top-row ::deep .btn-link {
+        white-space: nowrap;
+        margin-left: 1.5rem;
+        text-decoration: none;
+        color: var(--apple-blue);
+        font-weight: 500;
+    }
+
+    .top-row ::deep a:hover, .top-row ::deep .btn-link:hover {
+        opacity: 0.7;
+    }
+
+    .top-row ::deep a:first-child {
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+@media (max-width: 640.98px) {
+    .top-row {
+        justify-content: space-between;
+    }
+
+    .top-row ::deep a, .top-row ::deep .btn-link {
+        margin-left: 0;
+    }
+}
+
+@media (min-width: 641px) {
+    .page {
+        flex-direction: row;
+    }
+
+    .top-row {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+    }
+
+    .top-row.auth ::deep a:first-child {
+        flex: 1;
+        text-align: right;
+        width: 0;
+    }
+
+    .top-row, article {
+        padding-left: 2rem !important;
+        padding-right: 1.5rem !important;
+    }
+}
+
+#blazor-error-ui {
+    background: var(--apple-red);
+    bottom: 0;
+    box-shadow: var(--apple-shadow-lg);
+    display: none;
+    left: 0;
+    padding: 0.6rem 1.25rem 0.7rem 1.25rem;
+    position: fixed;
+    width: 100%;
+    z-index: 1000;
+    border-radius: 10px 10px 0 0;
+    color: white;
+}
+
+    #blazor-error-ui .dismiss {
+        cursor: pointer;
+        position: absolute;
+        right: 0.75rem;
+        top: 0.5rem;
+        font-size: 20px;
+        opacity: 0.8;
+    }
+
+    #blazor-error-ui .dismiss:hover {
+        opacity: 1;
+    }

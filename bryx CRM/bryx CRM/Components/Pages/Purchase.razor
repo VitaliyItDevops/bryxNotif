@@ -1,0 +1,1752 @@
+﻿@page "/purchase"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using bryx_CRM.Data
+@using bryx_CRM.Data.Models
+@using Microsoft.EntityFrameworkCore
+@using PurchaseModel = bryx_CRM.Data.Models.Purchase
+@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
+@attribute [Authorize]
+
+<PageTitle>Закупка</PageTitle>
+
+<h3>Закупка</h3>
+
+<div class="header-actions">
+    <button class="btn-add-purchase" @onclick="ShowAddPurchaseModal">+ Добавить покупку</button>
+</div>
+
+<div class="purchases-section">
+    <h4>История покупок</h4>
+
+    <div class="filters-row">
+        <div class="category-filter">
+            <label>Категория:</label>
+            <select @bind="selectedViewCategory" @bind:after="LoadPendingProducts" class="form-select">
+                <option value="">-- Все категории --</option>
+                @foreach (var category in categories)
+                {
+                    <option value="@category">@category</option>
+                }
+            </select>
+        </div>
+
+        <div class="status-filter">
+            <label>Статус:</label>
+            <select @bind="selectedViewStatus" @bind:after="LoadPendingProducts" class="form-select">
+                <option value="">-- Все статусы --</option>
+                <option value="Ожидается">Ожидается</option>
+                <option value="Получено">Получено</option>
+                <option value="Отменено">Отменено</option>
+            </select>
+        </div>
+
+        <div class="filter-group">
+            <label>Поставщик:</label>
+            <input type="text" @bind="filterSupplier" @bind:after="LoadPendingProducts" placeholder="Поиск по поставщику" class="form-input" />
+        </div>
+
+        <div class="filter-group">
+            <label>Дата от:</label>
+            <input type="date" @bind="filterDateFrom" @bind:after="LoadPendingProducts" class="form-input" />
+        </div>
+
+        <div class="filter-group">
+            <label>Дата до:</label>
+            <input type="date" @bind="filterDateTo" @bind:after="LoadPendingProducts" class="form-input" />
+        </div>
+    </div>
+
+    <div class="filters-row">
+        <div class="filter-group">
+            <label>Цена от (₴):</label>
+            <input type="number" @bind="filterPriceMin" @bind:after="LoadPendingProducts" placeholder="Мин." class="form-input" step="100" />
+        </div>
+
+        <div class="filter-group">
+            <label>Цена до (₴):</label>
+            <input type="number" @bind="filterPriceMax" @bind:after="LoadPendingProducts" placeholder="Макс." class="form-input" step="100" />
+        </div>
+
+        <div class="filter-group">
+            <label>Сортировка:</label>
+            <select @bind="sortBy" @bind:after="LoadPendingProducts" class="form-select">
+                <option value="date_desc">По дате (новые)</option>
+                <option value="date_asc">По дате (старые)</option>
+                <option value="price_desc">По цене (дорогие)</option>
+                <option value="price_asc">По цене (дешевые)</option>
+            </select>
+        </div>
+
+        <div class="filter-group">
+            <button class="btn-reset-filters" @onclick="ResetFilters">Сбросить фильтры</button>
+        </div>
+    </div>
+
+    @if (purchases == null)
+    {
+        <p>Загрузка...</p>
+    }
+    else if (!purchases.Any())
+    {
+        <p class="no-products">Нет покупок на поступлении</p>
+    }
+    else
+    {
+        <div class="purchases-list">
+            @foreach (var purchase in purchases)
+            {
+                <div class="purchase-card @(expandedPurchaseId == purchase.Id ? "expanded" : "")">
+                    <div class="purchase-header" @onclick="@(() => ToggleExpand(purchase.Id))">
+                        <div class="purchase-info">
+                            <h4>@purchase.Category • @purchase.Supplier • @purchase.TotalPriceUSD.ToString("N2") $ (@purchase.TotalPriceUAH.ToString("N2") ₴)</h4>
+                            <div class="purchase-details">
+                                <span><strong>Дата:</strong> @purchase.PurchaseDate.ToLocalTime().ToString("dd.MM.yyyy")</span>
+                                <span><strong>Количество:</strong> @purchase.Quantity шт.</span>
+                                <span><strong>Курс:</strong> @purchase.ExchangeRate.ToString("N2")</span>
+                                <span class="status-badge status-@purchase.Status.ToLower()">@purchase.Status</span>
+                            </div>
+                        </div>
+                        <div class="expand-icon" style="display: flex; gap: 10px; align-items: center;">
+                            <button class="btn-delete-small" @onclick="@(() => ShowDeleteConfirmModal(purchase))" @onclick:stopPropagation="true" title="Удалить закупку">
+                                🗑️
+                            </button>
+                            @if (expandedPurchaseId == purchase.Id)
+                            {
+                                <span>▼</span>
+                            }
+                            else
+                            {
+                                <span>▶</span>
+                            }
+                        </div>
+                    </div>
+
+                    @if (expandedPurchaseId == purchase.Id)
+                    {
+                        <div class="purchase-content">
+                            @if (!string.IsNullOrEmpty(purchase.Comment))
+                            {
+                                <div class="purchase-comment">
+                                    <strong>Комментарий:</strong> @purchase.Comment
+                                </div>
+                            }
+
+                            @if (purchase.Status == "Ожидается")
+                            {
+                                <div class="purchase-actions-top">
+                                    <button class="btn-confirm" @onclick="@(() => ShowConfirmArrivalModal(purchase))" @onclick:stopPropagation="true">
+                                        ✓ Подтвердить поступление
+                                    </button>
+                                    <button class="btn-delete" @onclick="@(() => ShowDeleteConfirmModal(purchase))" @onclick:stopPropagation="true">
+                                        🗑 Отменить
+                                    </button>
+                                </div>
+                            }
+
+                            <h5>Товары в покупке:</h5>
+                            <div class="products-table">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Название</th>
+                                            <th>Цвет</th>
+                                            <th>Цена $ (за ед.)</th>
+                                            <th>Курс $</th>
+                                            <th>Цена UAH (за ед.)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var product in purchase.Products)
+                                        {
+                                            <tr>
+                                                <td>@product.Name</td>
+                                                <td>@(product.Color ?? "-")</td>
+                                                <td>@product.PriceInUSD?.ToString("N2") $</td>
+                                                <td>@product.ExchangeRate?.ToString("N2")</td>
+                                                <td>@product.PurchasePrice.ToString("N2") ₴</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@* Модальное окно подтверждения поступления *@
+@if (showConfirmArrivalModal && selectedPurchase != null)
+{
+    <div class="modal-overlay" @onclick="CloseConfirmArrivalModal">
+        <div class="modal-content" @onclick:stopPropagation="true">
+            <h4>Подтвердить поступление покупки</h4>
+
+            <div class="product-summary">
+                <p><strong>Категория:</strong> @selectedPurchase.Category</p>
+                <p><strong>Поставщик:</strong> @selectedPurchase.Supplier</p>
+                <p><strong>Количество:</strong> @selectedPurchase.Quantity шт.</p>
+                <p><strong>Цена:</strong> @selectedPurchase.TotalPriceUSD.ToString("N2") $ (@selectedPurchase.TotalPriceUAH.ToString("N2") ₴)</p>
+            </div>
+
+            <div class="form-group">
+                <label>Дата поступления:</label>
+                <input type="date" @bind="arrivalDate" class="form-input" />
+            </div>
+
+            @if (!string.IsNullOrEmpty(confirmError))
+            {
+                <div class="error-message">@confirmError</div>
+            }
+
+            <div class="modal-actions">
+                <button class="btn-cancel" @onclick="CloseConfirmArrivalModal">Отмена</button>
+                <button class="btn-save" @onclick="ConfirmArrival">Подтвердить</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* Модальное окно добавления покупки *@
+@if (showAddPurchaseModal)
+{
+    <div class="modal-overlay" @onclick="CloseAddPurchaseModal">
+        <div class="modal-content large" @onclick:stopPropagation="true">
+            <h4>Добавить покупку</h4>
+
+            <div class="form-group">
+                <label>Категория товара: <span class="required">*</span></label>
+                <select @bind="selectedCategory" class="form-select" @bind:after="OnCategoryChanged">
+                    <option value="">-- Выберите категорию --</option>
+                    @foreach (var category in categories)
+                    {
+                        <option value="@category">@category</option>
+                    }
+                </select>
+            </div>
+
+            @if (!string.IsNullOrEmpty(selectedCategory))
+            {
+                <div class="form-group">
+                    <label>Подкатегория:</label>
+                    <div class="subcategory-select-container">
+                        <select @bind="selectedSubcategory" class="form-select subcategory-select">
+                            <option value="">-- Выберите подкатегорию --</option>
+                            @foreach (var subcategory in subcategories)
+                            {
+                                <option value="@subcategory">@subcategory</option>
+                            }
+                        </select>
+                        <button class="btn-add-subcategory" @onclick="ShowAddSubcategoryModal" type="button">+ Добавить</button>
+                    </div>
+                </div>
+            }
+
+            <div class="form-group">
+                <label>Название товара: <span class="required">*</span></label>
+                <select @bind="productNameSelection" class="form-select" @bind:after="OnProductNameSelectionChanged">
+                    <option value="">-- Выберите из списка или введите вручную --</option>
+                    @if (productsInCategory != null)
+                    {
+                        @foreach (var name in productsInCategory)
+                        {
+                            <option value="@name">@name</option>
+                        }
+                    }
+                    <option value="__custom__">✏️ Ввести вручную</option>
+                </select>
+            </div>
+
+            @if (showCustomProductName)
+            {
+                <div class="form-group">
+                    <label>Введите название товара: <span class="required">*</span></label>
+                    <input type="text" @bind="customProductName" placeholder="Название товара..." class="form-input" />
+                </div>
+            }
+
+            <div class="form-group">
+                <label>Цвет товара:</label>
+                <select @bind="colorSelection" class="form-select" @bind:after="OnColorSelectionChanged">
+                    <option value="">-- Выберите из списка или введите вручную --</option>
+                    @if (colorsInProduct != null && colorsInProduct.Any())
+                    {
+                        @foreach (var color in colorsInProduct)
+                        {
+                            <option value="@color">@color</option>
+                        }
+                    }
+                    <option value="__custom__">✏️ Ввести вручную</option>
+                </select>
+            </div>
+
+            @if (showCustomColor)
+            {
+                <div class="form-group">
+                    <label>Введите цвет:</label>
+                    <input type="text" @bind="customColor" placeholder="Например: Черный, Белый, Синий..." class="form-input" />
+                </div>
+            }
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Общая цена в $ (за весь товар): <span class="required">*</span></label>
+                    <input type="number" step="0.01" @bind="priceInUSD" @bind:event="oninput" placeholder="0.00" class="form-input" />
+                </div>
+
+                <div class="form-group">
+                    <label>Курс $: <span class="required">*</span></label>
+                    <input type="number" step="0.01" @bind="exchangeRate" @bind:event="oninput" placeholder="0.00" class="form-input" />
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Планируемая цена продажи:</label>
+                    <input type="number" step="0.01" @bind="plannedPrice" placeholder="0.00" class="form-input" />
+                </div>
+
+                <div class="form-group">
+                    <label>Цена закупки (UAH): <span class="calculated">*авто</span></label>
+                    <input type="text" value="@CalculatedPurchasePrice" readonly class="form-input readonly-input" placeholder="Рассчитается автоматически" />
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Поставщик: <span class="required">*</span></label>
+                <div class="supplier-select-container">
+                    <select @bind="selectedSupplier" class="form-select supplier-select">
+                        <option value="">-- Выберите поставщика --</option>
+                        @foreach (var supplier in suppliers)
+                        {
+                            <option value="@supplier.Name">@supplier.Name</option>
+                        }
+                    </select>
+                    <button class="btn-add-supplier" @onclick="ShowAddSupplierModal" type="button">+ Добавить</button>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Количество штук: <span class="required">*</span></label>
+                <input type="number" min="1" @bind="quantity" placeholder="1" class="form-input" />
+            </div>
+
+            @if (!string.IsNullOrEmpty(purchaseError))
+            {
+                <div class="error-message">@purchaseError</div>
+            }
+
+            <div class="modal-actions">
+                <button class="btn-cancel" @onclick="CloseAddPurchaseModal">Отмена</button>
+                <button class="btn-save" @onclick="SavePurchase">Сохранить</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* Модальное окно добавления поставщика *@
+@if (showAddSupplierModal)
+{
+    <div class="modal-overlay" @onclick="CloseAddSupplierModal">
+        <div class="modal-content" @onclick:stopPropagation="true">
+            <h4>Добавить поставщика</h4>
+
+            <div class="form-group">
+                <label>Название поставщика: <span class="required">*</span></label>
+                <input type="text" @bind="newSupplierName" placeholder="Например: ООО Компания" class="form-input" />
+            </div>
+
+            @if (!string.IsNullOrEmpty(supplierError))
+            {
+                <div class="error-message">@supplierError</div>
+            }
+
+            <div class="modal-actions">
+                <button class="btn-cancel" @onclick="CloseAddSupplierModal">Отмена</button>
+                <button class="btn-save" @onclick="SaveSupplier">Сохранить</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* Модальное окно добавления подкатегории *@
+@if (showAddSubcategoryModal)
+{
+    <div class="modal-overlay" @onclick="CloseAddSubcategoryModal">
+        <div class="modal-content" @onclick:stopPropagation="true">
+            <h4>Добавить подкатегорию</h4>
+
+            <div class="form-group">
+                <label>Категория:</label>
+                <input type="text" value="@selectedCategory" readonly class="form-input readonly-input" />
+            </div>
+
+            <div class="form-group">
+                <label>Название подкатегории: <span class="required">*</span></label>
+                <input type="text" @bind="newSubcategoryName" placeholder="Например: Беспроводные" class="form-input" />
+            </div>
+
+            <div class="form-group">
+                <label>Описание (необязательно):</label>
+                <textarea @bind="newSubcategoryDescription" placeholder="Описание подкатегории..." class="form-textarea" rows="3"></textarea>
+            </div>
+
+            @if (!string.IsNullOrEmpty(subcategoryError))
+            {
+                <div class="error-message">@subcategoryError</div>
+            }
+
+            <div class="modal-actions">
+                <button class="btn-cancel" @onclick="CloseAddSubcategoryModal">Отмена</button>
+                <button class="btn-save" @onclick="SaveSubcategory">Сохранить</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* Модальное окно подтверждения удаления *@
+@if (showDeleteConfirmModal && purchaseToDelete != null)
+{
+    <div class="modal-overlay" @onclick="CloseDeleteConfirmModal">
+        <div class="modal-content" @onclick:stopPropagation="true">
+            <h4>Подтвердить удаление</h4>
+
+            <div class="warning-message">
+                <p>⚠️ Вы уверены, что хотите удалить эту покупку?</p>
+                <p>Это действие нельзя отменить!</p>
+            </div>
+
+            <div class="product-summary">
+                <p><strong>Категория:</strong> @purchaseToDelete.Category</p>
+                <p><strong>Поставщик:</strong> @purchaseToDelete.Supplier</p>
+                <p><strong>Количество:</strong> @purchaseToDelete.Quantity шт.</p>
+                <p><strong>Цена:</strong> @purchaseToDelete.TotalPriceUSD.ToString("N2") $ (@purchaseToDelete.TotalPriceUAH.ToString("N2") ₴)</p>
+            </div>
+
+            <div class="form-group">
+                <label>Причина отмены:</label>
+                <textarea @bind="cancelComment" placeholder="Укажите причину отмены покупки..." class="form-textarea" rows="3"></textarea>
+            </div>
+
+            @if (!string.IsNullOrEmpty(deleteError))
+            {
+                <div class="error-message">@deleteError</div>
+            }
+
+            <div class="modal-actions">
+                <button class="btn-cancel" @onclick="CloseDeleteConfirmModal">Отмена</button>
+                <button class="btn-delete-confirm" @onclick="DeletePurchase">Удалить</button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .header-actions {
+        margin-bottom: 30px;
+        display: flex;
+        justify-content: flex-start;
+    }
+
+    .purchases-section {
+        margin-bottom: 40px;
+        padding: 20px;
+        background: var(--apple-bg-secondary);
+        border-radius: 8px;
+    }
+
+        .purchases-section h4 {
+            margin: 0 0 20px 0;
+            color: var(--apple-text-primary);
+        }
+
+    .purchases-list {
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .purchase-card {
+        background: var(--apple-gradient-card);
+        border: 1px solid var(--apple-border);
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        transition: all 0.3s ease;
+    }
+
+        .purchase-card:hover {
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .purchase-card.expanded {
+            border-color: var(--apple-blue);
+        }
+
+    .purchase-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px;
+        cursor: pointer;
+        transition: background 0.2s ease;
+    }
+
+        .purchase-header:hover {
+            background: var(--apple-bg-secondary);
+        }
+
+    .purchase-info h4 {
+        margin: 0 0 10px 0;
+        color: var(--apple-text-primary);
+        font-size: 18px;
+    }
+
+    .purchase-details {
+        display: flex;
+        gap: 20px;
+        flex-wrap: wrap;
+        font-size: 14px;
+        color: var(--apple-text-secondary);
+    }
+
+        .purchase-details span {
+            display: flex;
+            align-items: center;
+        }
+
+    .expand-icon {
+        font-size: 20px;
+        color: var(--apple-blue);
+        font-weight: bold;
+    }
+
+    .purchase-content {
+        padding: 0 20px 20px 20px;
+        border-top: 1px solid var(--apple-border);
+        animation: slideDown 0.3s ease;
+    }
+
+    .purchase-comment {
+        background: rgba(255, 159, 10, 0.2);
+        border-left: 4px solid #ffc107;
+        padding: 12px 15px;
+        margin: 15px 0;
+        border-radius: 8px;
+    }
+
+        .purchase-comment strong {
+            color: var(--apple-orange);
+        }
+
+    .status-badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+
+    .status-ожидается {
+        background: rgba(255, 159, 10, 0.2);
+        color: var(--apple-orange);
+    }
+
+    .status-получено {
+        background: rgba(48, 209, 88, 0.2);
+        color: #0a3622;
+    }
+
+    .status-отменено {
+        background: rgba(255, 69, 58, 0.15);
+        color: var(--apple-red);
+    }
+
+    @@keyframes slideDown {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .purchase-actions-top {
+        display: flex;
+        gap: 10px;
+        padding: 15px 0;
+    }
+
+    .purchase-content h5 {
+        margin: 15px 0 10px 0;
+        color: var(--apple-text-primary);
+        font-size: 16px;
+    }
+
+    .products-table {
+        overflow-x: auto;
+    }
+
+        .products-table table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--apple-bg-secondary);
+            border-radius: 10px;
+        }
+
+        .products-table thead {
+            background: var(--apple-bg-tertiary);
+        }
+
+        .products-table th {
+            padding: 10px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--apple-text-primary);
+            font-size: 13px;
+            border-bottom: 2px solid var(--apple-border);
+        }
+
+        .products-table td {
+            padding: 10px;
+            color: var(--apple-text-primary);
+            font-size: 14px;
+            border-bottom: 1px solid var(--apple-border);
+        }
+
+        .products-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+    .filters-row {
+        display: flex;
+        gap: 20px;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+    }
+
+    .category-filter,
+    .status-filter {
+        flex: 1;
+        min-width: 200px;
+    }
+
+        .category-filter label,
+        .status-filter label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: var(--apple-text-primary);
+        }
+
+    .filter-group {
+        flex: 1;
+        min-width: 200px;
+    }
+
+        .filter-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: var(--apple-text-primary);
+            font-size: 13px;
+        }
+
+    .btn-reset-filters {
+        background: var(--apple-text-secondary);
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 10px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        margin-top: 26px;
+    }
+
+        .btn-reset-filters:hover {
+            background: var(--apple-text-secondary);
+        }
+
+    .no-products {
+        text-align: center;
+        color: var(--apple-text-secondary);
+        padding: 40px;
+        font-style: italic;
+    }
+
+    .btn-confirm {
+        background: var(--apple-green);
+        color: white;
+        border: none;
+        padding: 12px 20px;
+        border-radius: 10px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+
+        .btn-confirm:hover {
+            background: var(--apple-green);
+            transform: scale(1.02);
+        }
+
+    .btn-delete {
+        background: var(--apple-red);
+        color: white;
+        border: none;
+        padding: 12px 20px;
+        border-radius: 10px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+
+        .btn-delete:hover {
+            background: var(--apple-red);
+            transform: scale(1.02);
+        }
+
+    .btn-delete-small {
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        font-size: 18px;
+        padding: 5px 8px;
+        border-radius: 6px;
+        transition: all 0.2s;
+    }
+
+        .btn-delete-small:hover {
+            background: rgba(255, 59, 48, 0.1);
+            transform: scale(1.1);
+        }
+
+    .btn-delete-confirm {
+        background: var(--apple-red);
+        color: white;
+        padding: 10px 24px;
+        border: none;
+        border-radius: 10px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+
+        .btn-delete-confirm:hover {
+            background: var(--apple-red);
+        }
+
+    .warning-message {
+        background: rgba(255, 159, 10, 0.2);
+        border: 1px solid rgba(255, 159, 10, 0.3);
+        padding: 15px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+    }
+
+        .warning-message p {
+            margin: 5px 0;
+            color: var(--apple-orange);
+            font-weight: 600;
+        }
+
+    .product-summary {
+        background: var(--apple-bg-secondary);
+        padding: 15px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+    }
+
+        .product-summary p {
+            margin: 5px 0;
+            color: var(--apple-text-primary);
+        }
+
+    .btn-add-purchase {
+        background: var(--apple-gradient-blue);
+        color: white;
+        border: none;
+        padding: 12px 28px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 16px;
+        font-weight: 600;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        transition: all 0.3s ease;
+    }
+
+        .btn-add-purchase:hover {
+            background: var(--apple-gradient-blue);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .modal-content {
+        background: var(--apple-gradient-card);
+        padding: 30px;
+        border-radius: 8px;
+        width: 90%;
+        max-width: 500px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+
+        .modal-content.large {
+            max-width: 700px;
+        }
+
+        .modal-content h4 {
+            margin: 0 0 20px 0;
+            color: var(--apple-text-primary);
+        }
+
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: var(--apple-text-primary);
+        }
+
+    .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 15px;
+    }
+
+    .required {
+        color: var(--apple-red);
+    }
+
+    .calculated {
+        color: var(--apple-green);
+        font-style: italic;
+        font-size: 12px;
+    }
+
+    .readonly-input {
+        background-color: var(--apple-bg-tertiary);
+        cursor: not-allowed;
+        color: var(--apple-text-primary);
+        font-weight: 600;
+    }
+
+    .form-input, .form-select, .form-textarea {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid var(--apple-border);
+        border-radius: 10px;
+        font-size: 14px;
+        box-sizing: border-box;
+        background-color: var(--apple-bg-tertiary) !important;
+        color: var(--apple-text-primary) !important;
+    }
+
+        .form-input:focus, .form-select:focus, .form-textarea:focus {
+            outline: none;
+            border-color: var(--apple-blue);
+            box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.3);
+            background-color: var(--apple-bg-elevated) !important;
+            color: var(--apple-text-primary) !important;
+        }
+
+    .form-select option {
+        background-color: var(--apple-bg-tertiary);
+        color: var(--apple-text-primary);
+    }
+
+    .form-textarea {
+        resize: vertical;
+        font-family: inherit;
+    }
+
+    .supplier-select-container {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+    }
+
+    .supplier-select {
+        flex: 1;
+    }
+
+    .btn-add-supplier {
+        background: var(--apple-green);
+        color: white;
+        border: none;
+        padding: 10px 16px;
+        border-radius: 10px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+        white-space: nowrap;
+        transition: all 0.3s ease;
+    }
+
+        .btn-add-supplier:hover {
+            background: var(--apple-green);
+        }
+
+    .subcategory-select-container {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+    }
+
+    .subcategory-select {
+        flex: 1;
+    }
+
+    .btn-add-subcategory {
+        background: var(--apple-blue);
+        color: white;
+        border: none;
+        padding: 10px 16px;
+        border-radius: 10px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+        white-space: nowrap;
+        transition: all 0.3s ease;
+    }
+
+        .btn-add-subcategory:hover {
+            background: var(--apple-blue);
+        }
+
+    .error-message {
+        background: rgba(255, 69, 58, 0.15);
+        color: var(--apple-red);
+        padding: 12px;
+        border-radius: 10px;
+        margin-bottom: 15px;
+        border: 1px solid rgba(255, 69, 58, 0.3);
+        font-size: 14px;
+        font-weight: 500;
+    }
+
+    .modal-actions {
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+    }
+
+    .btn-cancel, .btn-save {
+        padding: 10px 24px;
+        border: none;
+        border-radius: 10px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+    }
+
+    .btn-cancel {
+        background: var(--apple-text-secondary);
+        color: white;
+    }
+
+        .btn-cancel:hover {
+            background: var(--apple-text-secondary);
+        }
+
+    .btn-save {
+        background: var(--apple-green);
+        color: white;
+    }
+
+        .btn-save:hover {
+            background: var(--apple-green);
+        }
+</style>
+
+@code {
+    private List<string> categories = new List<string>();
+    private List<Supplier> suppliers = new List<Supplier>();
+    private List<string>? productsInCategory = null;
+    private List<string>? colorsInProduct = null;
+    private List<string> subcategories = new List<string>();
+    private string selectedSubcategory = "";
+
+    // Покупки на поступлении
+    private string selectedViewCategory = "";
+    private string selectedViewStatus = "";
+    private List<PurchaseModel>? purchases = null;
+    private int? expandedPurchaseId = null;
+
+    // Дополнительные фильтры и сортировка
+    private string filterSupplier = "";
+    private DateOnly? filterDateFrom = null;
+    private DateOnly? filterDateTo = null;
+    private decimal? filterPriceMin = null;
+    private decimal? filterPriceMax = null;
+    private string sortBy = "date_desc"; // date_desc, date_asc, price_desc, price_asc
+
+    // Модальное окно подтверждения поступления
+    private bool showConfirmArrivalModal = false;
+    private PurchaseModel? selectedPurchase = null;
+    private DateOnly arrivalDate = DateOnly.FromDateTime(DateTime.Today);
+    private string confirmError = "";
+
+    // Модальное окно добавления покупки
+    private bool showAddPurchaseModal = false;
+    private string selectedCategory = "";
+    private string productNameSelection = "";
+    private bool showCustomProductName = false;
+    private string customProductName = "";
+    private string colorSelection = "";
+    private bool showCustomColor = false;
+    private string customColor = "";
+    private decimal? priceInUSD = null;
+    private decimal? exchangeRate = null;
+    private decimal? plannedPrice = null;
+    private string selectedSupplier = "";
+    private int quantity = 1;
+    private string purchaseError = "";
+
+    // Вычисляемое свойство для автоматического расчета цены в UAH
+    private string CalculatedPurchasePrice
+    {
+        get
+        {
+            if (priceInUSD.HasValue && exchangeRate.HasValue)
+            {
+                var result = priceInUSD.Value * exchangeRate.Value;
+                return result.ToString("F2");
+            }
+            return "";
+        }
+    }
+
+    // Модальное окно добавления поставщика
+    private bool showAddSupplierModal = false;
+    private string newSupplierName = "";
+    private string supplierError = "";
+
+    // Модальное окно добавления подкатегории
+    private bool showAddSubcategoryModal = false;
+    private string newSubcategoryName = "";
+    private string newSubcategoryDescription = "";
+    private string subcategoryError = "";
+
+    // Модальное окно удаления закупки
+    private bool showDeleteConfirmModal = false;
+    private PurchaseModel? purchaseToDelete = null;
+    private string cancelComment = "";
+    private string deleteError = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCategories();
+        await LoadSuppliers();
+        await LoadPendingProducts();
+    }
+
+    private async Task LoadCategories()
+    {
+        using var context = await DbContextFactory.CreateDbContextAsync();
+        categories = await context.Categories
+            .OrderBy(c => c.Name)
+            .Select(c => c.Name)
+            .ToListAsync();
+    }
+
+    private async Task LoadSuppliers()
+    {
+        using var context = await DbContextFactory.CreateDbContextAsync();
+        suppliers = await context.Suppliers
+            .OrderBy(s => s.Name)
+            .ToListAsync();
+    }
+
+    private async Task LoadSubcategories()
+    {
+        if (string.IsNullOrEmpty(selectedCategory))
+        {
+            subcategories = new List<string>();
+            selectedSubcategory = "";
+            return;
+        }
+
+        using var context = await DbContextFactory.CreateDbContextAsync();
+        subcategories = await context.Subcategories
+            .Where(s => s.CategoryName == selectedCategory)
+            .Select(s => s.Name)
+            .OrderBy(s => s)
+            .ToListAsync();
+
+        // Сбросить выбранную подкатегорию, если она больше не доступна
+        if (!string.IsNullOrEmpty(selectedSubcategory) && !subcategories.Contains(selectedSubcategory))
+        {
+            selectedSubcategory = "";
+        }
+    }
+
+    private async Task LoadPendingProducts()
+    {
+        using var context = await DbContextFactory.CreateDbContextAsync();
+
+        var query = context.Purchases
+            .Include(p => p.Products)
+            .AsQueryable();
+
+        // Существующие фильтры
+        if (!string.IsNullOrEmpty(selectedViewCategory))
+        {
+            query = query.Where(p => p.Category == selectedViewCategory);
+        }
+
+        if (!string.IsNullOrEmpty(selectedViewStatus))
+        {
+            query = query.Where(p => p.Status == selectedViewStatus);
+        }
+
+        // Новые фильтры
+        if (!string.IsNullOrWhiteSpace(filterSupplier))
+        {
+            query = query.Where(p => p.Supplier.Contains(filterSupplier));
+        }
+
+        if (filterDateFrom.HasValue)
+        {
+            var dateFrom = filterDateFrom.Value.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+            query = query.Where(p => p.PurchaseDate >= dateFrom);
+        }
+
+        if (filterDateTo.HasValue)
+        {
+            var dateTo = filterDateTo.Value.ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc);
+            query = query.Where(p => p.PurchaseDate <= dateTo);
+        }
+
+        if (filterPriceMin.HasValue)
+        {
+            query = query.Where(p => p.TotalPriceUAH >= filterPriceMin.Value);
+        }
+
+        if (filterPriceMax.HasValue)
+        {
+            query = query.Where(p => p.TotalPriceUAH <= filterPriceMax.Value);
+        }
+
+        // Применяем сортировку
+        query = sortBy switch
+        {
+            "date_asc" => query.OrderBy(p => p.PurchaseDate),
+            "price_desc" => query.OrderByDescending(p => p.TotalPriceUAH),
+            "price_asc" => query.OrderBy(p => p.TotalPriceUAH),
+            _ => query.OrderByDescending(p => p.PurchaseDate) // date_desc по умолчанию
+        };
+
+        purchases = await query.ToListAsync();
+
+        StateHasChanged();
+    }
+
+    private async Task ResetFilters()
+    {
+        selectedViewCategory = "";
+        selectedViewStatus = "";
+        filterSupplier = "";
+        filterDateFrom = null;
+        filterDateTo = null;
+        filterPriceMin = null;
+        filterPriceMax = null;
+        sortBy = "date_desc";
+        await LoadPendingProducts();
+    }
+
+    private void ToggleExpand(int purchaseId)
+    {
+        if (expandedPurchaseId == purchaseId)
+            expandedPurchaseId = null;
+        else
+            expandedPurchaseId = purchaseId;
+
+        StateHasChanged();
+    }
+
+    private void ShowConfirmArrivalModal(PurchaseModel purchase)
+    {
+        selectedPurchase = purchase;
+        arrivalDate = DateOnly.FromDateTime(DateTime.Today);
+        confirmError = "";
+        showConfirmArrivalModal = true;
+        StateHasChanged();
+    }
+
+    private void CloseConfirmArrivalModal()
+    {
+        showConfirmArrivalModal = false;
+        selectedPurchase = null;
+        confirmError = "";
+        StateHasChanged();
+    }
+
+    private async Task ConfirmArrival()
+    {
+        if (selectedPurchase == null) return;
+
+        confirmError = "";
+
+        try
+        {
+            using var context = await DbContextFactory.CreateDbContextAsync();
+
+            // Получаем покупку
+            var purchase = await context.Purchases.FindAsync(selectedPurchase.Id);
+            if (purchase == null)
+            {
+                confirmError = "Покупка не найдена!";
+                StateHasChanged();
+                return;
+            }
+
+            // Получаем все товары из покупки
+            var products = await context.Products
+                .Where(p => p.PurchaseId == selectedPurchase.Id)
+                .ToListAsync();
+
+            if (!products.Any())
+            {
+                confirmError = "Товары не найдены!";
+                StateHasChanged();
+                return;
+            }
+
+            // Обновляем статус покупки
+            purchase.Status = "Получено";
+            purchase.UpdatedAt = DateTime.UtcNow;
+
+            // Обновляем статус и дату поступления для всех товаров покупки
+            var arrivalDateTime = arrivalDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+            foreach (var product in products)
+            {
+                product.Status = "В наличии";
+                product.ArrivalDate = arrivalDateTime;
+                product.UpdatedAt = DateTime.UtcNow;
+            }
+
+            await context.SaveChangesAsync();
+
+            // Обновляем список покупок
+            await LoadPendingProducts();
+
+            CloseConfirmArrivalModal();
+        }
+        catch (Exception ex)
+        {
+            confirmError = $"Ошибка при подтверждении: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnCategoryChanged()
+    {
+        if (!string.IsNullOrEmpty(selectedCategory))
+        {
+            using var context = await DbContextFactory.CreateDbContextAsync();
+            productsInCategory = await context.Products
+                .Where(p => p.Category == selectedCategory)
+                .Select(p => p.Name)
+                .Distinct()
+                .OrderBy(n => n)
+                .ToListAsync();
+        }
+        else
+        {
+            productsInCategory = null;
+        }
+
+        // Загрузить подкатегории для выбранной категории
+        await LoadSubcategories();
+
+        selectedSubcategory = "";
+        productNameSelection = "";
+        showCustomProductName = false;
+        customProductName = "";
+        colorsInProduct = null;
+        colorSelection = "";
+        showCustomColor = false;
+        customColor = "";
+        StateHasChanged();
+    }
+
+    private async Task OnProductNameSelectionChanged()
+    {
+        if (productNameSelection == "__custom__")
+        {
+            showCustomProductName = true;
+            customProductName = "";
+            colorsInProduct = null;
+        }
+        else
+        {
+            showCustomProductName = false;
+            customProductName = "";
+
+            // Загружаем доступные цвета для выбранного продукта
+            if (!string.IsNullOrEmpty(productNameSelection) && !string.IsNullOrEmpty(selectedCategory))
+            {
+                using var context = await DbContextFactory.CreateDbContextAsync();
+                colorsInProduct = await context.Products
+                    .Where(p => p.Category == selectedCategory && p.Name == productNameSelection && !string.IsNullOrEmpty(p.Color))
+                    .Select(p => p.Color!)
+                    .Distinct()
+                    .OrderBy(c => c)
+                    .ToListAsync();
+            }
+            else
+            {
+                colorsInProduct = null;
+            }
+        }
+
+        colorSelection = "";
+        showCustomColor = false;
+        customColor = "";
+        StateHasChanged();
+    }
+
+    private void OnColorSelectionChanged()
+    {
+        if (colorSelection == "__custom__")
+        {
+            showCustomColor = true;
+            customColor = "";
+        }
+        else
+        {
+            showCustomColor = false;
+            customColor = "";
+        }
+        StateHasChanged();
+    }
+
+    private void ShowAddPurchaseModal()
+    {
+        showAddPurchaseModal = true;
+        ResetPurchaseForm();
+        StateHasChanged();
+    }
+
+    private void CloseAddPurchaseModal()
+    {
+        showAddPurchaseModal = false;
+        ResetPurchaseForm();
+        StateHasChanged();
+    }
+
+    private void ResetPurchaseForm()
+    {
+        selectedCategory = "";
+        selectedSubcategory = "";
+        subcategories = new List<string>();
+        productNameSelection = "";
+        showCustomProductName = false;
+        customProductName = "";
+        colorSelection = "";
+        showCustomColor = false;
+        customColor = "";
+        colorsInProduct = null;
+        priceInUSD = null;
+        exchangeRate = null;
+        plannedPrice = null;
+        selectedSupplier = "";
+        quantity = 1;
+        productsInCategory = null;
+        purchaseError = "";
+    }
+
+    private async Task SavePurchase()
+    {
+        purchaseError = "";
+
+        // Валидация
+        if (string.IsNullOrWhiteSpace(selectedCategory))
+        {
+            purchaseError = "Выберите категорию!";
+            StateHasChanged();
+            return;
+        }
+
+        string finalProductName = "";
+        if (showCustomProductName)
+        {
+            if (string.IsNullOrWhiteSpace(customProductName))
+            {
+                purchaseError = "Введите название товара!";
+                StateHasChanged();
+                return;
+            }
+            finalProductName = customProductName.Trim();
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(productNameSelection))
+            {
+                purchaseError = "Выберите название товара!";
+                StateHasChanged();
+                return;
+            }
+            finalProductName = productNameSelection;
+        }
+
+        if (!priceInUSD.HasValue || priceInUSD.Value <= 0)
+        {
+            purchaseError = "Введите корректную цену в $!";
+            StateHasChanged();
+            return;
+        }
+
+        if (!exchangeRate.HasValue || exchangeRate.Value <= 0)
+        {
+            purchaseError = "Введите корректный курс $!";
+            StateHasChanged();
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(selectedSupplier))
+        {
+            purchaseError = "Выберите поставщика!";
+            StateHasChanged();
+            return;
+        }
+
+        if (quantity < 1)
+        {
+            purchaseError = "Количество должно быть не меньше 1!";
+            StateHasChanged();
+            return;
+        }
+
+        try
+        {
+            using var context = await DbContextFactory.CreateDbContextAsync();
+
+            // Определяем финальный цвет
+            string? finalColor = null;
+            if (showCustomColor && !string.IsNullOrWhiteSpace(customColor))
+            {
+                finalColor = customColor.Trim();
+            }
+            else if (!string.IsNullOrWhiteSpace(colorSelection) && colorSelection != "__custom__")
+            {
+                finalColor = colorSelection;
+            }
+
+            // Вычисляем цены с умным распределением остатка
+            var totalPriceUSD = priceInUSD.Value;
+            var totalPriceUAH = totalPriceUSD * exchangeRate.Value;
+
+            // Определяем финальную подкатегорию
+            string? finalSubcategory = !string.IsNullOrWhiteSpace(selectedSubcategory) ? selectedSubcategory : null;
+
+            // Создаём запись покупки
+            var purchase = new PurchaseModel
+            {
+                PurchaseDate = DateTime.UtcNow,
+                Category = selectedCategory,
+                Subcategory = finalSubcategory,
+                Supplier = selectedSupplier,
+                TotalPriceUSD = totalPriceUSD,
+                ExchangeRate = exchangeRate.Value,
+                TotalPriceUAH = totalPriceUAH,
+                Quantity = quantity,
+                Status = "Ожидается",
+                CreatedAt = DateTime.UtcNow
+            };
+
+            context.Purchases.Add(purchase);
+            await context.SaveChangesAsync(); // Сохраняем, чтобы получить PurchaseModel.Id
+
+            // Базовая цена за единицу в USD (округленная до 2 знаков)
+            var pricePerUnitUSD = Math.Round(totalPriceUSD / quantity, 2);
+
+            // Вычисляем остаток в USD
+            var totalRoundedUSD = pricePerUnitUSD * quantity;
+            var differenceUSD = totalPriceUSD - totalRoundedUSD;
+
+            // Базовая цена за единицу в UAH (округленная до 2 знаков)
+            var pricePerUnitUAH = Math.Round(totalPriceUAH / quantity, 2);
+
+            // Вычисляем остаток в UAH
+            var totalRoundedUAH = pricePerUnitUAH * quantity;
+            var differenceUAH = totalPriceUAH - totalRoundedUAH;
+
+            // Создаём N записей товаров, привязанных к покупке
+            for (int i = 0; i < quantity; i++)
+            {
+                // Первому товару добавляем остаток, чтобы сумма была точной
+                var itemPriceUSD = (i == 0) ? Math.Round(pricePerUnitUSD + differenceUSD, 2) : pricePerUnitUSD;
+                var itemPriceUAH = (i == 0) ? Math.Round(pricePerUnitUAH + differenceUAH, 2) : pricePerUnitUAH;
+
+                var product = new Product
+                {
+                    Category = selectedCategory,
+                    Subcategory = finalSubcategory,
+                    Name = finalProductName,
+                    Color = finalColor,
+                    PriceInUSD = itemPriceUSD,
+                    ExchangeRate = exchangeRate.Value,
+                    PurchasePrice = itemPriceUAH,
+                    SalePrice = 0, // Будет заполнено при продаже
+                    PlannedPrice = plannedPrice,
+                    Status = "Ожидается",
+                    Supplier = selectedSupplier,
+                    PurchaseId = purchase.Id, // Привязываем к покупке
+                    IsDefective = false,
+                    IsFavorite = false,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                context.Products.Add(product);
+            }
+
+            await context.SaveChangesAsync();
+
+            // Обновляем список товаров на поступлении
+            await LoadPendingProducts();
+
+            CloseAddPurchaseModal();
+        }
+        catch (Exception ex)
+        {
+            purchaseError = $"Ошибка при сохранении: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+
+    private void ShowAddSupplierModal()
+    {
+        showAddSupplierModal = true;
+        newSupplierName = "";
+        supplierError = "";
+        StateHasChanged();
+    }
+
+    private void CloseAddSupplierModal()
+    {
+        showAddSupplierModal = false;
+        newSupplierName = "";
+        supplierError = "";
+        StateHasChanged();
+    }
+
+    private async Task SaveSupplier()
+    {
+        supplierError = "";
+
+        if (string.IsNullOrWhiteSpace(newSupplierName))
+        {
+            supplierError = "Введите название поставщика!";
+            StateHasChanged();
+            return;
+        }
+
+        try
+        {
+            var trimmedName = newSupplierName.Trim();
+
+            using var context = await DbContextFactory.CreateDbContextAsync();
+
+            var exists = await context.Suppliers
+                .AnyAsync(s => s.Name.ToLower() == trimmedName.ToLower());
+
+            if (exists)
+            {
+                supplierError = "Поставщик с таким названием уже существует!";
+                StateHasChanged();
+                return;
+            }
+
+            var supplier = new Supplier
+            {
+                Name = trimmedName,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            context.Suppliers.Add(supplier);
+            await context.SaveChangesAsync();
+
+            await LoadSuppliers();
+            selectedSupplier = trimmedName;
+
+            CloseAddSupplierModal();
+        }
+        catch (Exception ex)
+        {
+            supplierError = $"Ошибка при сохранении: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+
+    private void ShowAddSubcategoryModal()
+    {
+        showAddSubcategoryModal = true;
+        newSubcategoryName = "";
+        newSubcategoryDescription = "";
+        subcategoryError = "";
+        StateHasChanged();
+    }
+
+    private void CloseAddSubcategoryModal()
+    {
+        showAddSubcategoryModal = false;
+        newSubcategoryName = "";
+        newSubcategoryDescription = "";
+        subcategoryError = "";
+        StateHasChanged();
+    }
+
+    private async Task SaveSubcategory()
+    {
+        subcategoryError = "";
+
+        if (string.IsNullOrWhiteSpace(newSubcategoryName))
+        {
+            subcategoryError = "Введите название подкатегории!";
+            StateHasChanged();
+            return;
+        }
+
+        if (string.IsNullOrEmpty(selectedCategory))
+        {
+            subcategoryError = "Категория не выбрана!";
+            StateHasChanged();
+            return;
+        }
+
+        try
+        {
+            var trimmedName = newSubcategoryName.Trim();
+
+            using var context = await DbContextFactory.CreateDbContextAsync();
+
+            var exists = await context.Subcategories
+                .AnyAsync(s => s.CategoryName == selectedCategory && s.Name.ToLower() == trimmedName.ToLower());
+
+            if (exists)
+            {
+                subcategoryError = "Подкатегория с таким названием уже существует в этой категории!";
+                StateHasChanged();
+                return;
+            }
+
+            var subcategory = new Subcategory
+            {
+                CategoryName = selectedCategory,
+                Name = trimmedName,
+                Description = string.IsNullOrWhiteSpace(newSubcategoryDescription) ? null : newSubcategoryDescription.Trim(),
+                CreatedAt = DateTime.UtcNow
+            };
+
+            context.Subcategories.Add(subcategory);
+            await context.SaveChangesAsync();
+
+            await LoadSubcategories();
+            selectedSubcategory = trimmedName;
+
+            CloseAddSubcategoryModal();
+        }
+        catch (Exception ex)
+        {
+            subcategoryError = $"Ошибка при сохранении: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+
+    private void ShowDeleteConfirmModal(PurchaseModel purchase)
+    {
+        purchaseToDelete = purchase;
+        cancelComment = "";
+        deleteError = "";
+        showDeleteConfirmModal = true;
+        StateHasChanged();
+    }
+
+    private void CloseDeleteConfirmModal()
+    {
+        showDeleteConfirmModal = false;
+        purchaseToDelete = null;
+        cancelComment = "";
+        deleteError = "";
+        StateHasChanged();
+    }
+
+    private async Task DeletePurchase()
+    {
+        if (purchaseToDelete == null) return;
+
+        deleteError = "";
+
+        try
+        {
+            using var context = await DbContextFactory.CreateDbContextAsync();
+
+            // Получаем покупку
+            var purchase = await context.Purchases.FindAsync(purchaseToDelete.Id);
+            if (purchase == null)
+            {
+                deleteError = "Покупка не найдена!";
+                StateHasChanged();
+                return;
+            }
+
+            // Обновляем статус покупки на "Отменено"
+            purchase.Status = "Отменено";
+            purchase.Comment = string.IsNullOrWhiteSpace(cancelComment) ? null : cancelComment.Trim();
+            purchase.UpdatedAt = DateTime.UtcNow;
+
+            // Получаем все товары из покупки и удаляем их
+            var productsToDelete = await context.Products
+                .Where(p => p.PurchaseId == purchaseToDelete.Id)
+                .ToListAsync();
+
+            if (productsToDelete.Any())
+            {
+                context.Products.RemoveRange(productsToDelete);
+            }
+
+            await context.SaveChangesAsync();
+
+            // Обновляем список покупок
+            await LoadPendingProducts();
+
+            CloseDeleteConfirmModal();
+        }
+        catch (Exception ex)
+        {
+            deleteError = $"Ошибка при отмене: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+}

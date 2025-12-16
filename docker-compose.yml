@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:14-alpine
+    container_name: bryx-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: bryx_crm
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bryx-network
+
+  # Bryx CRM Web Application
+  crm:
+    build:
+      context: ./bryx CRM
+      dockerfile: Dockerfile
+    container_name: bryx-crm
+    restart: unless-stopped
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5092
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=bryx_crm;Username=postgres;Password=${POSTGRES_PASSWORD:-postgres}
+      - TelegramBot__BotToken=${TELEGRAM_BOT_TOKEN}
+      - TelegramBot__ChatId=${TELEGRAM_CHAT_ID}
+    ports:
+      - "5092:5092"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - crm_backups:/app/Backups
+    networks:
+      - bryx-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5092/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Telegram Bot
+  bot:
+    build:
+      context: ./bryxBot
+      dockerfile: Dockerfile
+    container_name: bryx-bot
+    restart: unless-stopped
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - BotConfiguration__BotToken=${BOT_TOKEN:-${TELEGRAM_BOT_TOKEN}}
+      - BotConfiguration__CrmApiUrl=http://crm:5092/api/bot/
+      - BotConfiguration__AllowedUsers__0=${ALLOWED_USER_1}
+      - BotConfiguration__AllowedUsers__1=${ALLOWED_USER_2}
+    depends_on:
+      crm:
+        condition: service_healthy
+    networks:
+      - bryx-network
+
+volumes:
+  postgres_data:
+    driver: local
+  crm_backups:
+    driver: local
+
+networks:
+  bryx-network:
+    driver: bridge

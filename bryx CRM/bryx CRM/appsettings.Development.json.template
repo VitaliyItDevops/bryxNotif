@@ -1,0 +1,29 @@
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Host=localhost;Port=5432;Database=bryx_crm;Username=postgres;Password=YOUR_PASSWORD_HERE"
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning",
+      "Microsoft.EntityFrameworkCore": "Information"
+    }
+  },
+  "AllowedHosts": "*",
+  "BackupOptions": {
+    "BackupDirectory": "Backups",
+    "MaxBackupsToKeep": 10,
+    "CompressBackups": true,
+    "AutoBackupEnabled": true,
+    "AutoBackupIntervalHours": 24
+  },
+  "TelegramBot": {
+    "BotToken": "YOUR_BOT_TOKEN_FROM_BOTFATHER",
+    "ChatId": "YOUR_TELEGRAM_CHAT_ID"
+  },
+  "Comments": {
+    "Instructions": "Скопируйте этот файл в appsettings.json и заполните реальными значениями",
+    "BotToken": "Получите токен от @BotFather в Telegram",
+    "ChatId": "Получите ваш Chat ID от @userinfobot в Telegram"
+  }
+}

@@ -1,0 +1,318 @@
+/* Apple Dark Theme - bryx CRM */
+
+:root {
+    /* Background Colors */
+    --apple-bg-primary: #000000;
+    --apple-bg-secondary: #1c1c1e;
+    --apple-bg-tertiary: #2c2c2e;
+    --apple-bg-elevated: #3a3a3c;
+
+    /* Text Colors */
+    --apple-text-primary: #f2f2f7;
+    --apple-text-secondary: #98989d;
+    --apple-text-tertiary: #48484a;
+
+    /* Accent Colors */
+    --apple-blue: #0a84ff;
+    --apple-green: #30d158;
+    --apple-red: #ff453a;
+    --apple-orange: #ff9f0a;
+    --apple-purple: #bf5af2;
+    --apple-pink: #ff375f;
+
+    /* Border & Divider */
+    --apple-border: #38383a;
+    --apple-divider: #48484a;
+
+    /* Shadows */
+    --apple-shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.5);
+    --apple-shadow-md: 0 4px 20px rgba(0, 0, 0, 0.6);
+    --apple-shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.7);
+
+    /* Gradients */
+    --apple-gradient-blue: linear-gradient(135deg, #0a84ff 0%, #0066cc 100%);
+    --apple-gradient-purple: linear-gradient(135deg, #bf5af2 0%, #8e44ad 100%);
+    --apple-gradient-sunset: linear-gradient(135deg, #ff375f 0%, #bf5af2 50%, #0a84ff 100%);
+    --apple-gradient-dark: linear-gradient(145deg, #1c1c1e 0%, #2c2c2e 50%, #1c1c1e 100%);
+    --apple-gradient-card: linear-gradient(135deg, rgba(28, 28, 30, 0.95) 0%, rgba(44, 44, 46, 0.95) 100%);
+}
+
+/* Logo animation - Smooth multi-directional 3D shadows */
+@keyframes logo-smooth-shadows {
+    0% {
+        transform: translate(0, 0);
+        filter: brightness(0) invert(1) hue-rotate(180deg) saturate(2) drop-shadow(0 0 0 transparent);
+    }
+    /* Move to top-left */
+    8% {
+        transform: translate(-4px, -4px);
+        filter: brightness(0) invert(1) hue-rotate(180deg) saturate(2) drop-shadow(4px 4px 0 rgba(255, 245, 200, 0.7));
+    }
+    16% {
+        transform: translate(-8px, -8px);
+        filter: brightness(0) invert(1) hue-rotate(180deg) saturate(2) drop-shadow(4px 4px 0 rgba(255, 245, 200, 0.85))
+                drop-shadow(8px 8px 0 rgba(255, 230, 100, 0.7));
+    }
+    24% {
+        transform: translate(-10px, -10px);
+        filter: brightness(0) invert(1) hue-rotate(180deg) saturate(2) drop-shadow(4px 4px 0 rgba(255, 245, 200, 0.9))
+                drop-shadow(8px 8px 0 rgba(255, 230, 100, 0.8))
+                drop-shadow(10px 10px 0 rgba(255, 215, 0, 0.7));
+    }
+    /* Hold and transition */
+    32% {
+        transform: translate(-6px, -6px);
+        filter: brightness(0) invert(1) hue-rotate(180deg) saturate(2) drop-shadow(3px 3px 0 rgba(255, 245, 200, 0.8))
+                drop-shadow(6px 6px 0 rgba(255, 230, 100, 0.7));
+    }
+    40% {
+        transform: translate(0, 0);
+        filter: brightness(0) invert(1) hue-rotate(180deg) saturate(2) drop-shadow(0 0 0 transparent);
+    }
+    /* Move to bottom-right */
+    48% {
+        transform: translate(4px, 4px);
+        filter: brightness(0) invert(1) hue-rotate(180deg) saturate(2) drop-shadow(-4px -4px 0 rgba(255, 245, 200, 0.7));
+    }
+    56% {
+        transform: translate(8px, 8px);
+        filter: brightness(0) invert(1) hue-rotate(180deg) saturate(2) drop-shadow(-4px -4px 0 rgba(255, 245, 200, 0.85))
+                drop-shadow(-8px -8px 0 rgba(255, 230, 100, 0.7));
+    }
+    64% {
+        transform: translate(10px, 10px);
+        filter: brightness(0) invert(1) hue-rotate(180deg) saturate(2) drop-shadow(-4px -4px 0 rgba(255, 245, 200, 0.9))
+                drop-shadow(-8px -8px 0 rgba(255, 230, 100, 0.8))
+                drop-shadow(-10px -10px 0 rgba(255, 215, 0, 0.7));
+    }
+    /* Hold and transition */
+    72% {
+        transform: translate(6px, 6px);
+        filter: brightness(0) invert(1) hue-rotate(180deg) saturate(2) drop-shadow(-3px -3px 0 rgba(255, 245, 200, 0.8))
+                drop-shadow(-6px -6px 0 rgba(255, 230, 100, 0.7));
+    }
+    80% {
+        transform: translate(0, 0);
+        filter: brightness(0) invert(1) hue-rotate(180deg) saturate(2) drop-shadow(0 0 0 transparent);
+    }
+    /* Quick diagonal shift */
+    88% {
+        transform: translate(-5px, 5px);
+        filter: brightness(0) invert(1) hue-rotate(180deg) saturate(2) drop-shadow(5px -5px 0 rgba(255, 245, 200, 0.75))
+                drop-shadow(8px -8px 0 rgba(255, 230, 100, 0.6));
+    }
+    96% {
+        transform: translate(-2px, 2px);
+        filter: brightness(0) invert(1) hue-rotate(180deg) saturate(2) drop-shadow(2px -2px 0 rgba(255, 245, 200, 0.5));
+    }
+    100% {
+        transform: translate(0, 0);
+        filter: brightness(0) invert(1) hue-rotate(180deg) saturate(2) drop-shadow(0 0 0 transparent);
+    }
+}
+
+.animated-logo {
+    animation: logo-smooth-shadows 8s ease-in-out infinite;
+}
+
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--apple-bg-elevated) var(--apple-bg-secondary);
+}
+
+*::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+    background: var(--apple-bg-secondary);
+}
+
+*::-webkit-scrollbar-thumb {
+    background: var(--apple-bg-elevated);
+    border-radius: 5px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+    background: #48484a;
+}
+
+html, body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: var(--apple-bg-primary);
+    color: var(--apple-text-primary);
+    margin: 0;
+    padding: 0;
+}
+
+a, .btn-link {
+    color: var(--apple-blue);
+    text-decoration: none;
+    transition: opacity 0.2s ease;
+}
+
+a:hover, .btn-link:hover {
+    opacity: 0.8;
+}
+
+.btn-primary {
+    color: var(--apple-text-primary);
+    background: var(--apple-gradient-blue);
+    border: none;
+    border-radius: 10px;
+    padding: 10px 20px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    box-shadow: var(--apple-shadow-sm);
+}
+
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--apple-shadow-md);
+}
+
+.btn:focus, .btn:active:focus, .btn-link.nav-link:focus, .form-control:focus, .form-check-input:focus {
+    box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.3);
+    outline: none;
+}
+
+.content {
+    padding-top: 1.1rem;
+    background-color: var(--apple-bg-primary);
+}
+
+h1, h2, h3, h4, h5, h6 {
+    color: var(--apple-text-primary);
+    font-weight: 600;
+    letter-spacing: -0.5px;
+}
+
+h1:focus {
+    outline: none;
+}
+
+.valid.modified:not([type=checkbox]) {
+    outline: 2px solid var(--apple-green);
+}
+
+.invalid {
+    outline: 2px solid var(--apple-red);
+}
+
+.validation-message {
+    color: var(--apple-red);
+    font-size: 13px;
+    margin-top: 4px;
+}
+
+.blazor-error-boundary {
+    background: var(--apple-red);
+    padding: 1rem 1rem 1rem 3.7rem;
+    color: white;
+    border-radius: 10px;
+    box-shadow: var(--apple-shadow-md);
+}
+
+.blazor-error-boundary::after {
+    content: "Произошла ошибка";
+}
+
+.darker-border-checkbox.form-check-input {
+    border-color: var(--apple-border);
+    background-color: var(--apple-bg-tertiary);
+}
+
+.form-floating > .form-control-plaintext::placeholder, .form-floating > .form-control::placeholder {
+    color: var(--apple-text-secondary);
+    text-align: end;
+}
+
+.form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
+    text-align: start;
+}
+
+/* Custom form inputs */
+input, select, textarea {
+    background-color: var(--apple-bg-tertiary);
+    color: var(--apple-text-primary);
+    border: 1px solid var(--apple-border);
+    border-radius: 8px;
+}
+
+input:focus, select:focus, textarea:focus {
+    background-color: var(--apple-bg-elevated);
+    border-color: var(--apple-blue);
+}
+
+/* Smooth transitions */
+* {
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+button, a, input, select {
+    transition: all 0.2s ease;
+}
+
+/* Tables Dark Theme - Override Bootstrap */
+table, .table {
+    background-color: var(--apple-bg-secondary) !important;
+    color: var(--apple-text-primary) !important;
+}
+
+table th, .table th, thead th {
+    background-color: var(--apple-bg-tertiary) !important;
+    color: var(--apple-text-primary) !important;
+    border-color: var(--apple-border) !important;
+}
+
+table td, .table td, tbody td {
+    background-color: var(--apple-bg-secondary) !important;
+    color: var(--apple-text-primary) !important;
+    border-color: var(--apple-border) !important;
+}
+
+table tbody tr:hover, .table tbody tr:hover {
+    background-color: var(--apple-bg-tertiary) !important;
+}
+
+.table-light, .table-light th, .table-light td {
+    background-color: var(--apple-bg-tertiary) !important;
+    color: var(--apple-text-primary) !important;
+}
+
+.table-hover tbody tr:hover {
+    background-color: var(--apple-bg-tertiary) !important;
+}
+
+/* Ensure all backgrounds are dark */
+.page, .content, main, article {
+    background-color: var(--apple-bg-primary) !important;
+}
+
+.sidebar {
+    background-color: var(--apple-bg-secondary) !important;
+}
+
+/* Override Bootstrap containers */
+.container, .container-fluid {
+    background-color: transparent !important;
+}
+
+/* Cards */
+.card {
+    background-color: var(--apple-bg-secondary) !important;
+    border-color: var(--apple-border) !important;
+    color: var(--apple-text-primary) !important;
+}
+
+.card-header {
+    background-color: var(--apple-bg-tertiary) !important;
+    border-color: var(--apple-border) !important;
+    color: var(--apple-text-primary) !important;
+}
+
+.card-body {
+    background-color: var(--apple-bg-secondary) !important;
+    color: var(--apple-text-primary) !important;
+}

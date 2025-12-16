@@ -1,0 +1,1124 @@
+﻿@page "/movement"
+@rendermode InteractiveServer
+@using bryx_CRM.Data
+@using bryx_CRM.Data.Models
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
+
+<PageTitle>Движение</PageTitle>
+
+<h3>Движение товаров</h3>
+
+@if (sales == null)
+{
+    <p>Загрузка...</p>
+}
+else if (!sales.Any())
+{
+    <p class="no-sales">Нет товаров в пути</p>
+}
+else
+{
+    <div class="sales-list">
+        @foreach (var sale in sales)
+        {
+            <div class="sale-card @(expandedSaleId == sale.Id ? "expanded" : "")">
+                <div class="sale-header" @onclick="@(() => ToggleExpand(sale.Id))">
+                    <div class="sale-info">
+                        <h4>@(!string.IsNullOrEmpty(sale.SoldThrough) ? sale.SoldThrough : "Прямая продажа") • @sale.Buyer • @sale.TotalAmount.ToString("N0") ₽</h4>
+                        <div class="sale-details">
+                            <span><strong>Дата продажи:</strong> @sale.SaleDate.ToLocalTime().ToString("dd.MM.yyyy")</span>
+                            @if (!string.IsNullOrEmpty(sale.TTN))
+                            {
+                                <span><strong>ТТН:</strong> @sale.TTN</span>
+                            }
+                            <span class="status-badge status-@sale.Status.ToLower()">@sale.Status</span>
+                        </div>
+                    </div>
+                    <div class="expand-icon">
+                        @if (expandedSaleId == sale.Id)
+                        {
+                            <span>▼</span>
+                        }
+                        else
+                        {
+                            <span>▶</span>
+                        }
+                    </div>
+                </div>
+
+                @if (expandedSaleId == sale.Id)
+                {
+                    <div class="sale-content">
+                        <h5>Товары в отправлении:</h5>
+                        <div class="products-table">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Название</th>
+                                        <th>Цвет</th>
+                                        <th>Категория</th>
+                                        <th>Поставщик</th>
+                                        <th>Цена продажи</th>
+                                        <th>Услуга</th>
+                                        <th>Статус</th>
+                                        <th>Действия</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var product in sale.Products)
+                                    {
+                                        <tr class="@(product.Status == "Возврат" ? "product-return-row" : "")">
+                                            <td>@product.Name</td>
+                                            <td>@(product.Color ?? "-")</td>
+                                            <td>@product.Category</td>
+                                            <td>@product.Supplier</td>
+                                            <td>@product.SalePrice.ToString("N0") ₽</td>
+                                            <td>
+                                                @if (product.Service != null)
+                                                {
+                                                    <div style="font-size: 0.9rem;">
+                                                        <strong>@product.Service.Name</strong><br/>
+                                                        <span style="color: var(--apple-text-secondary);">@product.Service.Price.ToString("N0") ₽</span>
+                                                    </div>
+                                                }
+                                                else
+                                                {
+                                                    <span style="color: var(--apple-text-tertiary);">-</span>
+                                                }
+                                            </td>
+                                            <td>
+                                                <span class="product-status-badge @GetProductStatusClass(product.Status)">
+                                                    @product.Status
+                                                </span>
+                                            </td>
+                                            <td>
+                                                @if (product.Status == "Возврат")
+                                                {
+                                                    <button class="btn-mark-received-small" @onclick="@(() => MarkReturnAsReceived(product))" @onclick:stopPropagation="true">
+                                                        ✓ Получено
+                                                    </button>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+
+                        @* Показываем кнопку "Отправить" для статуса "Ожидает" *@
+                        @if (sale.Status == "Ожидает")
+                        {
+                            <div class="actions-section">
+                                <button class="btn-ship" @onclick="@(() => MarkAsShipped(sale))">
+                                    📦 Отправить
+                                </button>
+                            </div>
+                        }
+
+                        @* Показываем кнопки только для статуса "Отправлено" *@
+                        @if (sale.Status == "Отправлено")
+                        {
+                            <div class="actions-section">
+                                <button class="btn-confirm" @onclick="@(() => ShowConfirmDeliveryModal(sale))">
+                                    ✓ Подтвердить получение
+                                </button>
+                                <button class="btn-return" @onclick="@(() => ShowReturnModal(sale))">
+                                    ↩ Оформить возврат
+                                </button>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+}
+
+@* Модальное окно подтверждения получения *@
+@if (showConfirmDeliveryModal && selectedSale != null)
+{
+    <div class="modal-overlay" @onclick="CloseConfirmDeliveryModal">
+        <div class="modal-content" @onclick:stopPropagation="true">
+            <h4>Подтвердить получение товара</h4>
+
+            <div class="sale-summary">
+                <p><strong>Покупатель:</strong> @selectedSale.Buyer</p>
+                <p><strong>Товаров:</strong> @selectedSale.Products.Count шт.</p>
+                <p><strong>Сумма:</strong> @selectedSale.TotalAmount.ToString("N0") ₽</p>
+            </div>
+
+            <p class="warning-text">Вы подтверждаете, что клиент получил все товары?</p>
+
+            @if (!string.IsNullOrEmpty(confirmError))
+            {
+                <div class="error-message">@confirmError</div>
+            }
+
+            <div class="modal-actions">
+                <button class="btn-cancel" @onclick="CloseConfirmDeliveryModal">Отмена</button>
+                <button class="btn-save" @onclick="ConfirmDelivery">Подтвердить</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* Модальное окно возврата *@
+@if (showReturnModal && selectedSale != null)
+{
+    <div class="modal-overlay" @onclick="CloseReturnModal">
+        <div class="modal-content large" @onclick:stopPropagation="true">
+            <h4>Оформление возврата</h4>
+
+            <div class="sale-summary">
+                <p><strong>Покупатель:</strong> @selectedSale.Buyer</p>
+                <p><strong>Дата продажи:</strong> @selectedSale.SaleDate.ToLocalTime().ToString("dd.MM.yyyy")</p>
+            </div>
+
+            <h5>Выберите товары для возврата:</h5>
+            <div class="return-products-list">
+                @foreach (var product in selectedSale.Products)
+                {
+                    <div class="return-product-item">
+                        <label class="checkbox-label">
+                            <input type="checkbox"
+                                   checked="@returnSelectedProducts.Contains(product.Id)"
+                                   @onchange="@(() => ToggleReturnProduct(product.Id))" />
+                            <div class="product-info">
+                                <strong>@product.Name</strong>
+                                @if (!string.IsNullOrEmpty(product.Color))
+                                {
+                                    <span class="product-color">(@product.Color)</span>
+                                }
+                                <span class="product-price">- @product.SalePrice.ToString("N0") ₽</span>
+                            </div>
+                        </label>
+                    </div>
+                }
+            </div>
+
+            <div class="return-actions">
+                <button class="btn-select-all" @onclick="SelectAllProducts">Выбрать все</button>
+                <button class="btn-deselect-all" @onclick="DeselectAllProducts">Снять все</button>
+            </div>
+
+            @if (!string.IsNullOrEmpty(returnError))
+            {
+                <div class="error-message">@returnError</div>
+            }
+
+            <div class="modal-actions">
+                <button class="btn-cancel" @onclick="CloseReturnModal">Отмена</button>
+                <button class="btn-return-confirm"
+                        @onclick="ProcessReturn"
+                        disabled="@(!returnSelectedProducts.Any())">
+                    Оформить возврат (@returnSelectedProducts.Count шт.)
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .no-sales {
+        text-align: center;
+        color: var(--apple-text-secondary);
+        padding: 40px;
+        font-style: italic;
+    }
+
+    .sales-list {
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .sale-card {
+        background: var(--apple-gradient-card);
+        border: 1px solid var(--apple-border);
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        transition: all 0.3s ease;
+    }
+
+        .sale-card:hover {
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .sale-card.expanded {
+            border-color: var(--apple-blue);
+        }
+
+    .sale-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px;
+        cursor: pointer;
+        transition: background 0.2s ease;
+    }
+
+        .sale-header:hover {
+            background: var(--apple-bg-secondary);
+        }
+
+    .sale-info h4 {
+        margin: 0 0 10px 0;
+        color: var(--apple-text-primary);
+        font-size: 18px;
+    }
+
+    .sale-details {
+        display: flex;
+        gap: 20px;
+        flex-wrap: wrap;
+        font-size: 14px;
+        color: var(--apple-text-secondary);
+    }
+
+    .expand-icon {
+        font-size: 20px;
+        color: var(--apple-blue);
+        font-weight: bold;
+    }
+
+    .sale-content {
+        padding: 0 20px 20px 20px;
+        border-top: 1px solid var(--apple-border);
+        animation: slideDown 0.3s ease;
+    }
+
+    @@keyframes slideDown {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .sale-content h5 {
+        margin: 15px 0 10px 0;
+        color: var(--apple-text-primary);
+        font-size: 16px;
+    }
+
+    .products-table {
+        overflow-x: auto;
+        margin-bottom: 20px;
+    }
+
+        .products-table table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--apple-bg-secondary);
+            border-radius: 10px;
+        }
+
+        .products-table thead {
+            background: var(--apple-bg-tertiary);
+        }
+
+        .products-table th {
+            padding: 10px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--apple-text-primary);
+            font-size: 13px;
+            border-bottom: 2px solid var(--apple-border);
+        }
+
+        .products-table td {
+            padding: 10px;
+            color: var(--apple-text-primary);
+            font-size: 14px;
+            border-bottom: 1px solid var(--apple-border);
+        }
+
+        .products-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+    .status-badge {
+        padding: 4px 8px;
+        border-radius: 8px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+
+    .status-badge.status-ожидает {
+        background: rgba(10, 132, 255, 0.2);
+        color: var(--apple-blue);
+    }
+
+    .status-badge.status-отправлено {
+        background: rgba(255, 159, 10, 0.2);
+        color: var(--apple-orange);
+    }
+
+    .status-badge.status-получено {
+        background: rgba(48, 209, 88, 0.2);
+        color: var(--apple-green);
+    }
+
+    .status-badge.status-возврат {
+        background: rgba(255, 69, 58, 0.15);
+        color: var(--apple-red);
+    }
+
+    .product-status-badge {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 8px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+
+    .product-status-badge.status-ожидает {
+        background: rgba(10, 132, 255, 0.2);
+        color: var(--apple-blue);
+    }
+
+    .product-status-badge.status-отправлено {
+        background: rgba(255, 159, 10, 0.2);
+        color: var(--apple-orange);
+    }
+
+    .product-status-badge.status-возврат {
+        background: rgba(255, 69, 58, 0.15);
+        color: var(--apple-red);
+    }
+
+    .product-status-badge.status-продано {
+        background: rgba(48, 209, 88, 0.2);
+        color: var(--apple-green);
+    }
+
+    .product-return-row {
+        background: rgba(255, 69, 58, 0.1) !important;
+    }
+
+    .btn-mark-received-small {
+        background: var(--apple-green);
+        color: white;
+        border: none;
+        padding: 6px 12px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 600;
+        transition: all 0.2s ease;
+        white-space: nowrap;
+    }
+
+        .btn-mark-received-small:hover {
+            background: var(--apple-green);
+            transform: scale(1.05);
+        }
+
+    .actions-section {
+        display: flex;
+        gap: 10px;
+        margin-top: 15px;
+    }
+
+    .btn-confirm {
+        background: var(--apple-green);
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 10px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+
+        .btn-confirm:hover {
+            background: var(--apple-green);
+            transform: scale(1.02);
+        }
+
+    .btn-return {
+        background: var(--apple-orange);
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 10px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+
+        .btn-return:hover {
+            background: var(--apple-orange);
+            transform: scale(1.02);
+        }
+
+    .btn-ship {
+        background: var(--apple-blue);
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 10px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+
+        .btn-ship:hover {
+            background: var(--apple-blue);
+            transform: scale(1.02);
+        }
+
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .modal-content {
+        background: var(--apple-gradient-card);
+        padding: 30px;
+        border-radius: 8px;
+        width: 90%;
+        max-width: 500px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+
+        .modal-content.large {
+            max-width: 700px;
+        }
+
+        .modal-content h4 {
+            margin: 0 0 20px 0;
+            color: var(--apple-text-primary);
+        }
+
+        .modal-content h5 {
+            margin: 20px 0 10px 0;
+            color: var(--apple-text-primary);
+            font-size: 16px;
+        }
+
+    .sale-summary {
+        background: var(--apple-bg-secondary);
+        padding: 15px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+    }
+
+        .sale-summary p {
+            margin: 5px 0;
+            color: var(--apple-text-primary);
+        }
+
+    .warning-text {
+        color: var(--apple-orange);
+        background: rgba(255, 159, 10, 0.2);
+        padding: 12px;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 159, 10, 0.3);
+        margin-bottom: 20px;
+    }
+
+    .return-products-list {
+        max-height: 300px;
+        overflow-y: auto;
+        border: 1px solid var(--apple-border);
+        border-radius: 10px;
+        padding: 10px;
+        background: var(--apple-bg-secondary);
+    }
+
+    .return-product-item {
+        padding: 10px;
+        background: var(--apple-gradient-card);
+        border-radius: 10px;
+        margin-bottom: 8px;
+        border: 1px solid var(--apple-border);
+    }
+
+    .checkbox-label {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        cursor: pointer;
+    }
+
+        .checkbox-label input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+
+    .product-info {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .product-color {
+        color: var(--apple-purple);
+        font-weight: 500;
+    }
+
+    .product-price {
+        color: var(--apple-green);
+        font-weight: 600;
+    }
+
+    .return-actions {
+        display: flex;
+        gap: 10px;
+        margin: 15px 0;
+    }
+
+    .btn-select-all, .btn-deselect-all {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 10px;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 600;
+    }
+
+    .btn-select-all {
+        background: var(--apple-blue);
+        color: white;
+    }
+
+        .btn-select-all:hover {
+            background: var(--apple-blue);
+        }
+
+    .btn-deselect-all {
+        background: var(--apple-text-secondary);
+        color: white;
+    }
+
+        .btn-deselect-all:hover {
+            background: var(--apple-text-secondary);
+        }
+
+    .error-message {
+        background: rgba(255, 69, 58, 0.15);
+        color: var(--apple-red);
+        padding: 12px;
+        border-radius: 10px;
+        margin-bottom: 15px;
+        border: 1px solid rgba(255, 69, 58, 0.3);
+        font-size: 14px;
+        font-weight: 500;
+    }
+
+    .modal-actions {
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+        margin-top: 20px;
+    }
+
+    .btn-cancel, .btn-save, .btn-return-confirm {
+        padding: 10px 24px;
+        border: none;
+        border-radius: 10px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+    }
+
+    .btn-cancel {
+        background: var(--apple-text-secondary);
+        color: white;
+    }
+
+        .btn-cancel:hover {
+            background: var(--apple-text-secondary);
+        }
+
+    .btn-save {
+        background: var(--apple-green);
+        color: white;
+    }
+
+        .btn-save:hover {
+            background: var(--apple-green);
+        }
+
+    .btn-return-confirm {
+        background: var(--apple-orange);
+        color: white;
+    }
+
+        .btn-return-confirm:hover {
+            background: var(--apple-orange);
+        }
+
+        .btn-return-confirm:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+</style>
+
+@code {
+    private List<Sale>? sales = null;
+    private int? expandedSaleId = null;
+
+    // Модальное окно подтверждения получения
+    private bool showConfirmDeliveryModal = false;
+    private Sale? selectedSale = null;
+    private string confirmError = "";
+
+    // Модальное окно возврата
+    private bool showReturnModal = false;
+    private HashSet<int> returnSelectedProducts = new HashSet<int>();
+    private string returnError = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSales();
+    }
+
+    private async Task LoadSales()
+    {
+        using var context = await DbContextFactory.CreateDbContextAsync();
+
+        // Загружаем продажи
+        sales = await context.Sales
+            .Where(s => s.Status == "Ожидает" || s.Status == "Отправлено" || s.Status == "Возврат" || s.Status == "Частичный возврат")
+            .OrderByDescending(s => s.SaleDate)
+            .ToListAsync();
+
+        // Загружаем товары для каждой продажи отдельным запросом
+        var saleIds = sales.Select(s => s.Id).ToList();
+        var products = await context.Products
+            .Include(p => p.Service)
+            .Where(p => p.SaleId != null && saleIds.Contains(p.SaleId.Value))
+            .ToListAsync();
+
+        // Связываем товары с продажами вручную
+        foreach (var sale in sales)
+        {
+            sale.Products = products.Where(p => p.SaleId == sale.Id).ToList();
+        }
+
+        // Автоматически исправляем статусы "зависших" продаж с частичным возвратом
+        await FixStuckPartialReturns(context, sales);
+
+        // Убираем продажи без товаров (все уже обработаны)
+        sales = sales.Where(s => s.Products.Any()).ToList();
+    }
+
+    private void ToggleExpand(int saleId)
+    {
+        if (expandedSaleId == saleId)
+            expandedSaleId = null;
+        else
+            expandedSaleId = saleId;
+
+        StateHasChanged();
+    }
+
+    private void ShowConfirmDeliveryModal(Sale sale)
+    {
+        selectedSale = sale;
+        confirmError = "";
+        showConfirmDeliveryModal = true;
+        StateHasChanged();
+    }
+
+    private void CloseConfirmDeliveryModal()
+    {
+        showConfirmDeliveryModal = false;
+        selectedSale = null;
+        confirmError = "";
+        StateHasChanged();
+    }
+
+    private async Task ConfirmDelivery()
+    {
+        if (selectedSale == null) return;
+
+        confirmError = "";
+
+        try
+        {
+            using var context = await DbContextFactory.CreateDbContextAsync();
+
+            // Обновляем статус продажи
+            var sale = await context.Sales
+                .Include(s => s.Products)
+                .FirstOrDefaultAsync(s => s.Id == selectedSale.Id);
+
+            if (sale == null)
+            {
+                confirmError = "Продажа не найдена!";
+                StateHasChanged();
+                return;
+            }
+
+            sale.Status = "Получено";
+            sale.UpdatedAt = DateTime.UtcNow;
+
+            // Обновляем статус товаров в продаже (кроме возвратов)
+            foreach (var product in sale.Products)
+            {
+                // Не трогаем товары на возврате - они обрабатываются отдельно
+                if (product.Status != "Возврат")
+                {
+                    product.Status = "Продано";
+                    product.UpdatedAt = DateTime.UtcNow;
+                }
+            }
+
+            await context.SaveChangesAsync();
+
+            // Обновляем список продаж
+            await LoadSales();
+
+            CloseConfirmDeliveryModal();
+        }
+        catch (Exception ex)
+        {
+            confirmError = $"Ошибка при подтверждении: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+
+    private void ShowReturnModal(Sale sale)
+    {
+        selectedSale = sale;
+        returnSelectedProducts.Clear();
+        returnError = "";
+        showReturnModal = true;
+        StateHasChanged();
+    }
+
+    private void CloseReturnModal()
+    {
+        showReturnModal = false;
+        selectedSale = null;
+        returnSelectedProducts.Clear();
+        returnError = "";
+        StateHasChanged();
+    }
+
+    private void ToggleReturnProduct(int productId)
+    {
+        if (returnSelectedProducts.Contains(productId))
+            returnSelectedProducts.Remove(productId);
+        else
+            returnSelectedProducts.Add(productId);
+
+        StateHasChanged();
+    }
+
+    private void SelectAllProducts()
+    {
+        if (selectedSale != null)
+        {
+            returnSelectedProducts = selectedSale.Products.Select(p => p.Id).ToHashSet();
+            StateHasChanged();
+        }
+    }
+
+    private void DeselectAllProducts()
+    {
+        returnSelectedProducts.Clear();
+        StateHasChanged();
+    }
+
+    private async Task ProcessReturn()
+    {
+        if (selectedSale == null || !returnSelectedProducts.Any()) return;
+
+        returnError = "";
+
+        try
+        {
+            using var context = await DbContextFactory.CreateDbContextAsync();
+
+            var sale = await context.Sales.FindAsync(selectedSale.Id);
+
+            if (sale == null)
+            {
+                returnError = "Продажа не найдена!";
+                StateHasChanged();
+                return;
+            }
+
+            // Загружаем ВСЕ товары этой продажи
+            var allProducts = await context.Products
+                .Where(p => p.SaleId == sale.Id)
+                .ToListAsync();
+
+            // Разделяем на возвращаемые и не возвращаемые
+            var productsToReturn = allProducts.Where(p => returnSelectedProducts.Contains(p.Id)).ToList();
+            var productsNotReturned = allProducts.Where(p => !returnSelectedProducts.Contains(p.Id)).ToList();
+
+            // Обновляем статусы товаров на возврат
+            foreach (var product in productsToReturn)
+            {
+                product.Status = "Возврат";  // Товар еще не получен физически
+                // НЕ обнуляем SaleId - товар все еще привязан к продаже
+                product.ServiceId = null;  // Убираем услугу при возврате
+                product.UpdatedAt = DateTime.UtcNow;
+                context.Entry(product).State = EntityState.Modified;
+            }
+
+            // Товары, которые НЕ возвращаются, получают статус "Продано"
+            foreach (var product in productsNotReturned)
+            {
+                product.Status = "Продано";
+                product.UpdatedAt = DateTime.UtcNow;
+                context.Entry(product).State = EntityState.Modified;
+            }
+
+            // Если все товары возвращены, меняем статус продажи
+            var remainingProducts = productsNotReturned.Count;
+
+            if (remainingProducts == 0)
+            {
+                // Полный возврат
+                sale.Status = "Возврат";
+                sale.TotalAmount = 0; // При полном возврате сумма = 0
+            }
+            else
+            {
+                // Частичный возврат - пересчитываем сумму только по не возвращенным товарам
+                sale.Status = "Частичный возврат";
+                decimal newTotalAmount = 0;
+
+                foreach (var product in productsNotReturned)
+                {
+                    // Суммируем цену продажи товара
+                    newTotalAmount += product.SalePrice;
+
+                    // Если у товара есть услуга, добавляем её стоимость
+                    if (product.ServiceId.HasValue)
+                    {
+                        var service = await context.Services.FindAsync(product.ServiceId.Value);
+                        if (service != null)
+                        {
+                            newTotalAmount += service.Price;
+                        }
+                    }
+                }
+
+                sale.TotalAmount = newTotalAmount;
+            }
+
+            sale.UpdatedAt = DateTime.UtcNow;
+            context.Entry(sale).State = EntityState.Modified;
+
+            await context.SaveChangesAsync();
+
+            // Обновляем список продаж
+            await LoadSales();
+
+            CloseReturnModal();
+        }
+        catch (Exception ex)
+        {
+            returnError = $"Ошибка при оформлении возврата: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+
+    private async Task MarkAsShipped(Sale sale)
+    {
+        try
+        {
+            using var context = await DbContextFactory.CreateDbContextAsync();
+
+            var saleToUpdate = await context.Sales.FindAsync(sale.Id);
+            if (saleToUpdate == null)
+            {
+                return;
+            }
+
+            saleToUpdate.Status = "Отправлено";
+            saleToUpdate.UpdatedAt = DateTime.UtcNow;
+            context.Entry(saleToUpdate).State = EntityState.Modified;
+
+            // Обновляем статус всех товаров в продаже
+            var products = await context.Products
+                .Where(p => p.SaleId == sale.Id)
+                .ToListAsync();
+
+            foreach (var product in products)
+            {
+                product.Status = "Отправлено";
+                product.UpdatedAt = DateTime.UtcNow;
+                context.Entry(product).State = EntityState.Modified;
+            }
+
+            await context.SaveChangesAsync();
+
+            // Обновляем список продаж
+            await LoadSales();
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Ошибка при изменении статуса: {ex.Message}");
+        }
+    }
+
+    private string GetProductStatusClass(string status)
+    {
+        return status.ToLower() switch
+        {
+            "ожидает" => "status-ожидает",
+            "отправлено" => "status-отправлено",
+            "возврат" => "status-возврат",
+            "продано" => "status-продано",
+            _ => ""
+        };
+    }
+
+    private async Task MarkReturnAsReceived(Product product)
+    {
+        try
+        {
+            using var context = await DbContextFactory.CreateDbContextAsync();
+
+            var productToUpdate = await context.Products.FindAsync(product.Id);
+            if (productToUpdate == null)
+            {
+                return;
+            }
+
+            // Сохраняем ID продажи ДО обнуления
+            var saleIdToCheck = productToUpdate.OriginalSaleId ?? productToUpdate.SaleId;
+
+            // Меняем статус на "В наличии" - товар физически вернулся на склад
+            productToUpdate.Status = "В наличии";
+            productToUpdate.SaleId = null;  // Отвязываем от текущей продажи
+            productToUpdate.Buyer = null;
+            productToUpdate.SalePrice = 0;
+            productToUpdate.SaleDate = null;
+            productToUpdate.UpdatedAt = DateTime.UtcNow;
+            context.Entry(productToUpdate).State = EntityState.Modified;
+
+            // Проверяем, остались ли товары на возврате для этой продажи
+            if (saleIdToCheck.HasValue)
+            {
+                var remainingReturns = await context.Products
+                    .Where(p => (p.OriginalSaleId == saleIdToCheck.Value || p.SaleId == saleIdToCheck.Value) && p.Status == "Возврат")
+                    .CountAsync();
+
+                // Если больше нет товаров на возврате, обновляем статус продажи
+                if (remainingReturns == 0)
+                {
+                    var sale = await context.Sales.FindAsync(saleIdToCheck.Value);
+                    if (sale != null)
+                    {
+                        // Проверяем, остались ли товары связанные с продажей (не возвращенные)
+                        var remainingProducts = await context.Products
+                            .Where(p => (p.OriginalSaleId == saleIdToCheck.Value || p.SaleId == saleIdToCheck.Value) && p.SaleId != null)
+                            .ToListAsync();
+
+                        if (remainingProducts.Count == 0)
+                        {
+                            // Все товары возвращены и получены - полный возврат завершен
+                            sale.Status = "Получено";
+                        }
+                        else
+                        {
+                            // Остались не возвращенные товары
+                            // Проверяем, все ли они уже в статусе "Продано"
+                            var allSold = remainingProducts.All(p => p.Status == "Продано");
+
+                            if (allSold)
+                            {
+                                // Частичный возврат завершен - все оставшиеся товары проданы
+                                sale.Status = "Получено";
+                            }
+                            // Если не все проданы (есть "Отправлено" или "Ожидает"),
+                            // оставляем статус "Частичный возврат"
+                        }
+
+                        sale.UpdatedAt = DateTime.UtcNow;
+                        context.Entry(sale).State = EntityState.Modified;
+                    }
+                }
+            }
+
+            await context.SaveChangesAsync();
+
+            // Обновляем список продаж
+            await LoadSales();
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Ошибка при обновлении статуса: {ex.Message}");
+        }
+    }
+
+    private async Task FixStuckPartialReturns(ApplicationDbContext context, List<Sale> sales)
+    {
+        // Исправляем статусы продаж с частичным возвратом, где все возвраты уже получены
+        var salesToFix = sales.Where(s => s.Status == "Частичный возврат" || s.Status == "Возврат").ToList();
+
+        foreach (var sale in salesToFix)
+        {
+            // Проверяем, есть ли товары со статусом "Возврат"
+            var hasReturnsInProgress = await context.Products
+                .Where(p => (p.OriginalSaleId == sale.Id || p.SaleId == sale.Id) && p.Status == "Возврат")
+                .AnyAsync();
+
+            if (!hasReturnsInProgress)
+            {
+                // Все возвраты получены, проверяем оставшиеся товары
+                var remainingProducts = await context.Products
+                    .Where(p => (p.OriginalSaleId == sale.Id || p.SaleId == sale.Id) && p.SaleId != null)
+                    .ToListAsync();
+
+                bool shouldMarkAsReceived = false;
+
+                if (remainingProducts.Count == 0)
+                {
+                    // Все товары возвращены - полный возврат завершен
+                    shouldMarkAsReceived = true;
+                }
+                else if (remainingProducts.All(p => p.Status == "Продано"))
+                {
+                    // Частичный возврат завершен - все оставшиеся товары проданы
+                    shouldMarkAsReceived = true;
+                }
+
+                if (shouldMarkAsReceived)
+                {
+                    sale.Status = "Получено";
+                    sale.UpdatedAt = DateTime.UtcNow;
+                    context.Entry(sale).State = EntityState.Modified;
+                }
+            }
+        }
+
+        // Сохраняем изменения
+        await context.SaveChangesAsync();
+    }
+}

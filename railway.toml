@@ -1,0 +1,26 @@
+# Railway Configuration for Bryx CRM + Bot
+# https://docs.railway.app/deploy/config-as-code
+
+# ============================================
+# CRM Service (ASP.NET Blazor Server)
+# ============================================
+[build]
+builder = "NIXPACKS"
+buildCommand = "dotnet publish bryx\\ CRM/bryx\\ CRM/bryx\\ CRM.csproj -c Release -o /app/publish"
+
+[deploy]
+startCommand = "dotnet /app/publish/bryx_CRM.dll"
+healthcheckPath = "/"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
+
+# ============================================
+# Environment Variables for CRM
+# ============================================
+# These will be set in Railway dashboard:
+# - DATABASE_URL (automatically provided by Railway PostgreSQL plugin)
+# - TELEGRAM_BOT_TOKEN
+# - TELEGRAM_CHAT_ID
+# - RAILWAY_VOLUME_MOUNT_PATH (for backups)
+# - ASPNETCORE_ENVIRONMENT=Production
