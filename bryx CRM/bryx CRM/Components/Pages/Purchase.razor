@@ -108,12 +108,9 @@
                             </div>
                         </div>
                         <div class="expand-icon" style="display: flex; gap: 10px; align-items: center;">
-                            @if (purchase.Status == "Ожидается")
-                            {
-                                <button class="btn-edit-small" @onclick="@(() => ShowEditPurchaseModal(purchase))" @onclick:stopPropagation="true" title="Редактировать закупку">
-                                    ✏️
-                                </button>
-                            }
+                            <button class="btn-edit-small" @onclick="@(() => ShowEditPurchaseModal(purchase))" @onclick:stopPropagation="true" title="Редактировать закупку">
+                                ✏️
+                            </button>
                             <button class="btn-delete-small" @onclick="@(() => ShowDeleteConfirmModal(purchase))" @onclick:stopPropagation="true" title="Удалить закупку">
                                 🗑️
                             </button>
@@ -1944,14 +1941,6 @@
     {
         if (purchaseToEdit == null) return;
 
-        // Критичная валидация: проверить статус
-        if (purchaseToEdit.Status != "Ожидается")
-        {
-            editError = "Можно редактировать только закупки со статусом 'Ожидается'!";
-            StateHasChanged();
-            return;
-        }
-
         // Валидация полей
         if (string.IsNullOrWhiteSpace(editCategory))
         {
@@ -2000,14 +1989,6 @@
             if (purchase == null)
             {
                 editError = "Закупка не найдена!";
-                StateHasChanged();
-                return;
-            }
-
-            // Еще раз проверяем статус (на случай изменения другим пользователем)
-            if (purchase.Status != "Ожидается")
-            {
-                editError = "Статус закупки изменился! Редактирование невозможно.";
                 StateHasChanged();
                 return;
             }
