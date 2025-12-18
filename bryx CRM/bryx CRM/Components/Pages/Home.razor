@@ -1163,19 +1163,20 @@
                 p.SaleDate.HasValue && p.SaleDate.Value >= dateFrom && p.SaleDate.Value <= dateTo)
                 .Sum(p => p.SalePrice);
 
-            // Финансовые расчеты - ИСПРАВЛЕННЫЙ МЕТОД
+            // Финансовые расчеты - ИСПРАВЛЕННЫЙ МЕТОД v2
             // ВАЖНО: Используем одни и те же Sales для расчета выручки и затрат
+            // ИСПОЛЬЗУЕМ CreatedAt вместо SaleDate для реальной даты создания записи
 
-            // 1. Берем все Sales в выбранном периоде (по дате продажи)
+            // 1. Берем все Sales в выбранном периоде (по дате создания записи CreatedAt)
             var salesInPeriod = await context.Sales
-                .Where(s => s.SaleDate >= dateFrom && s.SaleDate <= dateTo)
+                .Where(s => s.CreatedAt >= dateFrom && s.CreatedAt <= dateTo)
                 .ToListAsync();
 
             // ОТЛАДКА: Выводим информацию о продажах
-            Console.WriteLine($"🔍 DEBUG: Найдено продаж в периоде: {salesInPeriod.Count}");
+            Console.WriteLine($"🔍 DEBUG: Найдено продаж в периоде (по CreatedAt): {salesInPeriod.Count}");
             foreach (var sale in salesInPeriod)
             {
-                Console.WriteLine($"   - Sale ID: {sale.Id}, Buyer: {sale.Buyer}, Status: {sale.Status}, Amount: {sale.TotalAmount:N2}, Date: {sale.SaleDate}");
+                Console.WriteLine($"   - Sale ID: {sale.Id}, Buyer: {sale.Buyer}, Status: {sale.Status}, Amount: {sale.TotalAmount:N2}, SaleDate: {sale.SaleDate}, CreatedAt: {sale.CreatedAt}");
             }
 
             // 2. Получаем ID всех Sales в периоде
@@ -1225,11 +1226,11 @@
             // Сальдо = Текущие активы (в наличии + ожидается + отправлено)
             totalBalance = inStockValue + expectedValue + shippedValue;
 
-            // Загрузка последних продаж с учетом периода
+            // Загрузка последних продаж с учетом периода (по CreatedAt)
             var sales = await context.Sales
-                .Where(s => s.SaleDate >= dateFrom &&
-                            s.SaleDate <= dateTo)
-                .OrderByDescending(s => s.SaleDate)
+                .Where(s => s.CreatedAt >= dateFrom &&
+                            s.CreatedAt <= dateTo)
+                .OrderByDescending(s => s.CreatedAt)
                 .Take(5)
                 .ToListAsync();
 
