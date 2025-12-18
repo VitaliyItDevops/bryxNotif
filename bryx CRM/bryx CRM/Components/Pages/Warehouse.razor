@@ -1978,10 +1978,10 @@ else
             productToUpdate.Color = string.IsNullOrWhiteSpace(editProductColor) ? null : editProductColor.Trim();
             productToUpdate.PurchasePrice = editPurchasePrice;
             productToUpdate.CreatedAt = editCreatedAt.ToUniversalTime();
-            productToUpdate.ArrivalDate = editArrivalDate;
+            productToUpdate.ArrivalDate = editArrivalDate?.ToUniversalTime();
             productToUpdate.SalePrice = editSalePrice;
-            productToUpdate.SaleDate = editSaleDate;
-            productToUpdate.DeliveryDate = editDeliveryDate;
+            productToUpdate.SaleDate = editSaleDate?.ToUniversalTime();
+            productToUpdate.DeliveryDate = editDeliveryDate?.ToUniversalTime();
             productToUpdate.Supplier = editSupplier.Trim();
             productToUpdate.Status = editStatus;
             productToUpdate.UpdatedAt = DateTime.UtcNow;
