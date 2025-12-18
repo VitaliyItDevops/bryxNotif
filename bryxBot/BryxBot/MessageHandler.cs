@@ -446,6 +446,7 @@ public class MessageHandler
                     _allowedUsers = data.AllowedUsers;
                     _lastUsersUpdate = DateTime.UtcNow;
                     _logger.LogInformation("Обновлён список разрешённых пользователей из БД: {Count} пользователей", _allowedUsers.Count);
+                    _logger.LogInformation("Список пользователей из БД: [{Users}]", string.Join(", ", _allowedUsers.Select(u => $"@{u}")));
                 }
                 else
                 {
@@ -490,11 +491,20 @@ public class MessageHandler
 
         // Сравниваем username без учета регистра и без @
         var normalizedUsername = username.TrimStart('@').ToLower();
+        _logger.LogInformation("Проверка авторизации: username от Telegram = '{TelegramUsername}', нормализованный = '{NormalizedUsername}'",
+            username, normalizedUsername);
+        _logger.LogInformation("Список разрешённых (нормализованных): [{AllowedList}]",
+            string.Join(", ", _allowedUsers.Select(u => u.TrimStart('@').ToLower())));
+
         var isAuthorized = _allowedUsers.Any(u => u.TrimStart('@').ToLower() == normalizedUsername);
 
         if (!isAuthorized)
         {
             _logger.LogWarning("@{Username} не найден в списке разрешённых пользователей", username);
+        }
+        else
+        {
+            _logger.LogInformation("@{Username} успешно авторизован", username);
         }
 
         return isAuthorized;
