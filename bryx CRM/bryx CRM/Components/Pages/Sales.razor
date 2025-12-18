@@ -2254,8 +2254,11 @@ else
         {
             using var context = await DbContextFactory.CreateDbContextAsync();
 
-            // Load sale with tracking
-            var sale = await context.Sales.FindAsync(saleToEdit.Id);
+            // Load sale with products
+            var sale = await context.Sales
+                .Include(s => s.Products)
+                .FirstOrDefaultAsync(s => s.Id == saleToEdit.Id);
+
             if (sale == null)
             {
                 editError = "Продажа не найдена!";
@@ -2263,13 +2266,28 @@ else
                 return;
             }
 
+            // Store old SaleDate to check if it changed
+            var oldSaleDate = sale.SaleDate;
+            var newSaleDate = editSaleDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+
             // Update editable fields
             sale.Buyer = editBuyer.Trim();
-            sale.SaleDate = editSaleDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+            sale.SaleDate = newSaleDate;
             sale.TTN = string.IsNullOrWhiteSpace(editTTN) ? null : editTTN.Trim();
             sale.SoldThrough = string.IsNullOrWhiteSpace(editSoldThrough) ? null : editSoldThrough.Trim();
             sale.AdditionalService = string.IsNullOrWhiteSpace(editAdditionalService) ? null : editAdditionalService.Trim();
             sale.UpdatedAt = DateTime.UtcNow;
+
+            // ВАЖНО: Если дата продажи изменилась, обновляем Product.SaleDate для всех товаров в продаже
+            if (oldSaleDate != newSaleDate && sale.Products.Any())
+            {
+                foreach (var product in sale.Products)
+                {
+                    product.SaleDate = newSaleDate;
+                    product.UpdatedAt = DateTime.UtcNow;
+                }
+                Console.WriteLine($"✅ Обновлена дата продажи для {sale.Products.Count} товаров: {oldSaleDate:dd.MM.yyyy} -> {newSaleDate:dd.MM.yyyy}");
+            }
 
             await context.SaveChangesAsync();
 
