@@ -516,6 +516,11 @@
                 </select>
             </div>
 
+            <div class="form-group">
+                <label>Дата закупки <span class="required">*</span></label>
+                <input type="date" @bind="editPurchaseDate" class="form-control" />
+            </div>
+
             <div class="modal-actions">
                 <button class="btn-cancel" @onclick="CloseEditPurchaseModal">Отмена</button>
                 <button class="btn-save" @onclick="UpdatePurchase">Сохранить</button>
@@ -1178,6 +1183,7 @@
     private decimal? editExchangeRate = null;
     private string editSupplier = "";
     private int editQuantity = 1;
+    private DateOnly editPurchaseDate = DateOnly.FromDateTime(DateTime.Today);
     private string editError = "";
     private List<string> editSubcategories = new List<string>();
 
@@ -1885,6 +1891,7 @@
         editExchangeRate = purchase.ExchangeRate;
         editSupplier = purchase.Supplier;
         editQuantity = purchase.Quantity;
+        editPurchaseDate = DateOnly.FromDateTime(purchase.PurchaseDate.ToLocalTime());
         editError = "";
 
         await LoadEditSubcategories();
@@ -1932,6 +1939,7 @@
         editExchangeRate = null;
         editSupplier = "";
         editQuantity = 1;
+        editPurchaseDate = DateOnly.FromDateTime(DateTime.Today);
         editError = "";
         editSubcategories = new List<string>();
         StateHasChanged();
@@ -2000,6 +2008,7 @@
             purchase.ExchangeRate = editExchangeRate.Value;
             purchase.TotalPriceUAH = editPriceInUSD.Value * editExchangeRate.Value;
             purchase.Supplier = editSupplier.Trim();
+            purchase.PurchaseDate = editPurchaseDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
             purchase.UpdatedAt = DateTime.UtcNow;
 
             // Обработка изменения количества
