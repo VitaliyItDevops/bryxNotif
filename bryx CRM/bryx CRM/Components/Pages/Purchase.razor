@@ -108,6 +108,12 @@
                             </div>
                         </div>
                         <div class="expand-icon" style="display: flex; gap: 10px; align-items: center;">
+                            @if (purchase.Status == "Ожидается")
+                            {
+                                <button class="btn-edit-small" @onclick="@(() => ShowEditPurchaseModal(purchase))" @onclick:stopPropagation="true" title="Редактировать закупку">
+                                    ✏️
+                                </button>
+                            }
                             <button class="btn-delete-small" @onclick="@(() => ShowDeleteConfirmModal(purchase))" @onclick:stopPropagation="true" title="Удалить закупку">
                                 🗑️
                             </button>
@@ -444,6 +450,83 @@
     </div>
 }
 
+@* Модальное окно редактирования закупки *@
+@if (showEditPurchaseModal && purchaseToEdit != null)
+{
+    <div class="modal-overlay" @onclick="CloseEditPurchaseModal">
+        <div class="modal-content" @onclick:stopPropagation="true">
+            <h4>Редактировать закупку</h4>
+
+            <div class="warning-message">
+                ⚠️ Внимание: изменение закупки повлияет на все связанные товары
+            </div>
+
+            @if (!string.IsNullOrEmpty(editError))
+            {
+                <div class="error-message">@editError</div>
+            }
+
+            <div class="form-group">
+                <label>Категория <span class="required">*</span></label>
+                <select @bind="editCategory" @bind:after="OnEditCategoryChanged" class="form-control">
+                    <option value="">Выберите категорию</option>
+                    @foreach (var cat in categories)
+                    {
+                        <option value="@cat">@cat</option>
+                    }
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Подкатегория</label>
+                <select @bind="editSubcategory" class="form-control">
+                    <option value="">Выберите подкатегорию</option>
+                    @foreach (var subcat in editSubcategories)
+                    {
+                        <option value="@subcat">@subcat</option>
+                    }
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Цена в USD <span class="required">*</span></label>
+                <input type="number" step="0.01" @bind="editPriceInUSD" class="form-control" placeholder="0.00" />
+            </div>
+
+            <div class="form-group">
+                <label>Курс <span class="required">*</span></label>
+                <input type="number" step="0.01" @bind="editExchangeRate" class="form-control" placeholder="0.00" />
+            </div>
+
+            <div class="form-group">
+                <label>Количество <span class="required">*</span></label>
+                <input type="number" min="1" @bind="editQuantity" class="form-control" />
+            </div>
+
+            <div class="form-group">
+                <label>Цена в UAH (расчетная)</label>
+                <input type="text" value="@CalculatedEditPurchasePrice" class="form-control" readonly />
+            </div>
+
+            <div class="form-group">
+                <label>Поставщик <span class="required">*</span></label>
+                <select @bind="editSupplier" class="form-control">
+                    <option value="">Выберите поставщика</option>
+                    @foreach (var supplier in suppliers)
+                    {
+                        <option value="@supplier.Name">@supplier.Name</option>
+                    }
+                </select>
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn-cancel" @onclick="CloseEditPurchaseModal">Отмена</button>
+                <button class="btn-save" @onclick="UpdatePurchase">Сохранить</button>
+            </div>
+        </div>
+    </div>
+}
+
 <style>
     .header-actions {
         margin-bottom: 30px;
@@ -717,6 +800,21 @@
             transform: scale(1.02);
         }
 
+    .btn-edit-small {
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        font-size: 18px;
+        padding: 5px 8px;
+        border-radius: 6px;
+        transition: all 0.2s;
+    }
+
+        .btn-edit-small:hover {
+            background: rgba(0, 122, 255, 0.1);
+            transform: scale(1.1);
+        }
+
     .btn-delete-small {
         background: transparent;
         border: none;
@@ -954,6 +1052,17 @@
         font-weight: 500;
     }
 
+    .warning-message {
+        background: rgba(255, 159, 10, 0.15);
+        color: #ff9f0a;
+        padding: 12px;
+        border-radius: 10px;
+        margin-bottom: 15px;
+        border: 1px solid rgba(255, 159, 10, 0.3);
+        font-size: 14px;
+        font-weight: 500;
+    }
+
     .modal-actions {
         display: flex;
         gap: 10px;
@@ -1062,6 +1171,18 @@
     private PurchaseModel? purchaseToDelete = null;
     private string cancelComment = "";
     private string deleteError = "";
+
+    // Модальное окно редактирования закупки
+    private bool showEditPurchaseModal = false;
+    private PurchaseModel? purchaseToEdit = null;
+    private string editCategory = "";
+    private string editSubcategory = "";
+    private decimal? editPriceInUSD = null;
+    private decimal? editExchangeRate = null;
+    private string editSupplier = "";
+    private int editQuantity = 1;
+    private string editError = "";
+    private List<string> editSubcategories = new List<string>();
 
     protected override async Task OnInitializedAsync()
     {
@@ -1746,6 +1867,232 @@
         catch (Exception ex)
         {
             deleteError = $"Ошибка при отмене: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+
+    // Методы редактирования закупки
+    private string CalculatedEditPurchasePrice
+    {
+        get => (editPriceInUSD.HasValue && editExchangeRate.HasValue)
+            ? (editPriceInUSD.Value * editExchangeRate.Value).ToString("F2")
+            : "";
+    }
+
+    private async Task ShowEditPurchaseModal(PurchaseModel purchase)
+    {
+        purchaseToEdit = purchase;
+        editCategory = purchase.Category;
+        editSubcategory = purchase.Subcategory ?? "";
+        editPriceInUSD = purchase.TotalPriceUSD;
+        editExchangeRate = purchase.ExchangeRate;
+        editSupplier = purchase.Supplier;
+        editQuantity = purchase.Quantity;
+        editError = "";
+
+        await LoadEditSubcategories();
+
+        showEditPurchaseModal = true;
+        StateHasChanged();
+    }
+
+    private async Task LoadEditSubcategories()
+    {
+        if (string.IsNullOrEmpty(editCategory))
+        {
+            editSubcategories = new List<string>();
+            return;
+        }
+
+        using var context = await DbContextFactory.CreateDbContextAsync();
+        editSubcategories = await context.Subcategories
+            .Where(s => s.CategoryName == editCategory)
+            .Select(s => s.Name)
+            .OrderBy(s => s)
+            .ToListAsync();
+    }
+
+    private async Task OnEditCategoryChanged()
+    {
+        await LoadEditSubcategories();
+
+        // Сбросить выбранную подкатегорию, если она больше не доступна
+        if (!string.IsNullOrEmpty(editSubcategory) && !editSubcategories.Contains(editSubcategory))
+        {
+            editSubcategory = "";
+        }
+
+        StateHasChanged();
+    }
+
+    private void CloseEditPurchaseModal()
+    {
+        showEditPurchaseModal = false;
+        purchaseToEdit = null;
+        editCategory = "";
+        editSubcategory = "";
+        editPriceInUSD = null;
+        editExchangeRate = null;
+        editSupplier = "";
+        editQuantity = 1;
+        editError = "";
+        editSubcategories = new List<string>();
+        StateHasChanged();
+    }
+
+    private async Task UpdatePurchase()
+    {
+        if (purchaseToEdit == null) return;
+
+        // Критичная валидация: проверить статус
+        if (purchaseToEdit.Status != "Ожидается")
+        {
+            editError = "Можно редактировать только закупки со статусом 'Ожидается'!";
+            StateHasChanged();
+            return;
+        }
+
+        // Валидация полей
+        if (string.IsNullOrWhiteSpace(editCategory))
+        {
+            editError = "Выберите категорию!";
+            StateHasChanged();
+            return;
+        }
+
+        if (!editPriceInUSD.HasValue || editPriceInUSD.Value <= 0)
+        {
+            editError = "Укажите корректную цену в USD!";
+            StateHasChanged();
+            return;
+        }
+
+        if (!editExchangeRate.HasValue || editExchangeRate.Value <= 0)
+        {
+            editError = "Укажите корректный курс!";
+            StateHasChanged();
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(editSupplier))
+        {
+            editError = "Выберите поставщика!";
+            StateHasChanged();
+            return;
+        }
+
+        if (editQuantity < 1)
+        {
+            editError = "Количество должно быть не менее 1!";
+            StateHasChanged();
+            return;
+        }
+
+        try
+        {
+            using var context = await DbContextFactory.CreateDbContextAsync();
+
+            // Загружаем закупку с товарами
+            var purchase = await context.Purchases
+                .Include(p => p.Products)
+                .FirstOrDefaultAsync(p => p.Id == purchaseToEdit.Id);
+
+            if (purchase == null)
+            {
+                editError = "Закупка не найдена!";
+                StateHasChanged();
+                return;
+            }
+
+            // Еще раз проверяем статус (на случай изменения другим пользователем)
+            if (purchase.Status != "Ожидается")
+            {
+                editError = "Статус закупки изменился! Редактирование невозможно.";
+                StateHasChanged();
+                return;
+            }
+
+            // Обновляем поля закупки
+            purchase.Category = editCategory.Trim();
+            purchase.Subcategory = string.IsNullOrWhiteSpace(editSubcategory) ? null : editSubcategory.Trim();
+            purchase.TotalPriceUSD = editPriceInUSD.Value;
+            purchase.ExchangeRate = editExchangeRate.Value;
+            purchase.TotalPriceUAH = editPriceInUSD.Value * editExchangeRate.Value;
+            purchase.Supplier = editSupplier.Trim();
+            purchase.UpdatedAt = DateTime.UtcNow;
+
+            // Обработка изменения количества
+            int oldQuantity = purchase.Products.Count;
+            int newQuantity = editQuantity;
+
+            if (newQuantity != oldQuantity)
+            {
+                if (newQuantity > oldQuantity)
+                {
+                    // Увеличилось количество - добавляем новые Products
+                    int toAdd = newQuantity - oldQuantity;
+
+                    // Берем данные из первого существующего Product (если есть)
+                    var firstProduct = purchase.Products.FirstOrDefault();
+                    string productName = firstProduct?.Name ?? "Товар";
+                    string? productColor = firstProduct?.Color;
+
+                    for (int i = 0; i < toAdd; i++)
+                    {
+                        var newProduct = new Product
+                        {
+                            Category = purchase.Category,
+                            Subcategory = purchase.Subcategory,
+                            Name = productName,
+                            Color = productColor,
+                            PurchasePrice = editPriceInUSD.Value / newQuantity,
+                            Supplier = purchase.Supplier,
+                            Status = "Ожидается",
+                            PurchaseId = purchase.Id,
+                            CreatedAt = DateTime.UtcNow,
+                            UpdatedAt = DateTime.UtcNow
+                        };
+                        context.Products.Add(newProduct);
+                    }
+                }
+                else
+                {
+                    // Уменьшилось количество - удаляем последние Products
+                    int toRemove = oldQuantity - newQuantity;
+                    var productsToRemove = purchase.Products.Skip(newQuantity).Take(toRemove).ToList();
+                    context.Products.RemoveRange(productsToRemove);
+                }
+
+                purchase.Quantity = newQuantity;
+            }
+
+            // Пересчитываем цены для всех Products
+            decimal pricePerUnitUSD = editPriceInUSD.Value / newQuantity;
+
+            foreach (var product in purchase.Products.Where(p => context.Entry(p).State != EntityState.Deleted))
+            {
+                product.Category = purchase.Category;
+                product.Subcategory = purchase.Subcategory;
+                product.Supplier = purchase.Supplier;
+                product.PurchasePrice = pricePerUnitUSD;
+                product.UpdatedAt = DateTime.UtcNow;
+            }
+
+            await context.SaveChangesAsync();
+
+            // Перезагружаем список
+            await LoadPendingProducts();
+
+            CloseEditPurchaseModal();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            editError = "Данные были изменены другим пользователем. Пожалуйста, обновите страницу.";
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            editError = $"Ошибка при сохранении: {ex.Message}";
             StateHasChanged();
         }
     }

@@ -92,6 +92,9 @@ else
                         </div>
                     </div>
                     <div class="expand-icon" style="display: flex; gap: 10px; align-items: center;">
+                        <button class="btn-edit-small" @onclick="@(() => ShowEditSaleModal(sale))" @onclick:stopPropagation="true" title="Редактировать продажу">
+                            ✏️
+                        </button>
                         <button class="btn-delete-small" @onclick="@(() => ShowDeleteSaleModal(sale))" @onclick:stopPropagation="true" title="Удалить продажу">
                             🗑️
                         </button>
@@ -468,6 +471,51 @@ else
             <div class="modal-actions">
                 <button class="btn-cancel" @onclick="CloseDeleteSaleModal">Отмена</button>
                 <button class="btn-delete" @onclick="DeleteSale">Удалить</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* Модальное окно редактирования продажи *@
+@if (showEditSaleModal && saleToEdit != null)
+{
+    <div class="modal-overlay" @onclick="CloseEditSaleModal">
+        <div class="modal-content" @onclick:stopPropagation="true">
+            <h4>Редактировать продажу</h4>
+
+            <div class="form-group">
+                <label>Покупатель: <span class="required">*</span></label>
+                <input type="text" @bind="editBuyer" placeholder="Имя покупателя" class="form-input" />
+            </div>
+
+            <div class="form-group">
+                <label>Дата продажи: <span class="required">*</span></label>
+                <input type="date" @bind="editSaleDate" class="form-input" />
+            </div>
+
+            <div class="form-group">
+                <label>ТТН (номер накладной):</label>
+                <input type="text" @bind="editTTN" placeholder="Номер ТТН" class="form-input" />
+            </div>
+
+            <div class="form-group">
+                <label>Продано через:</label>
+                <input type="text" @bind="editSoldThrough" placeholder="Например: Интернет-магазин, Розница" class="form-input" />
+            </div>
+
+            <div class="form-group">
+                <label>Дополнительные услуги:</label>
+                <textarea @bind="editAdditionalService" placeholder="Например: Доставка, Установка" class="form-textarea" rows="2"></textarea>
+            </div>
+
+            @if (!string.IsNullOrEmpty(editError))
+            {
+                <div class="error-message">@editError</div>
+            }
+
+            <div class="modal-actions">
+                <button class="btn-cancel" @onclick="CloseEditSaleModal">Отмена</button>
+                <button class="btn-save" @onclick="UpdateSale">Сохранить</button>
             </div>
         </div>
     </div>
@@ -1179,6 +1227,21 @@ else
             background: #c53030;
         }
 
+    .btn-edit-small {
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        font-size: 18px;
+        padding: 5px 8px;
+        border-radius: 6px;
+        transition: all 0.2s;
+    }
+
+        .btn-edit-small:hover {
+            background: rgba(0, 122, 255, 0.1);
+            transform: scale(1.1);
+        }
+
     .btn-delete-small {
         background: transparent;
         border: none;
@@ -1456,6 +1519,16 @@ else
     private bool showDeleteSaleModal = false;
     private Sale? saleToDelete = null;
     private string deleteError = "";
+
+    // Модальное окно редактирования продажи
+    private bool showEditSaleModal = false;
+    private Sale? saleToEdit = null;
+    private string editBuyer = "";
+    private DateOnly editSaleDate = DateOnly.FromDateTime(DateTime.Today);
+    private string editTTN = "";
+    private string editSoldThrough = "";
+    private string editAdditionalService = "";
+    private string editError = "";
 
     // Категории и товары
     private List<string> categories = new List<string>();
@@ -2137,6 +2210,83 @@ else
         {
             deleteError = $"Ошибка при удалении: {ex.Message}";
             Console.WriteLine($"Ошибка при удалении продажи: {ex.Message}");
+        }
+    }
+
+    // === Методы редактирования продажи ===
+
+    private void ShowEditSaleModal(Sale sale)
+    {
+        saleToEdit = sale;
+        editBuyer = sale.Buyer;
+        editSaleDate = DateOnly.FromDateTime(sale.SaleDate.ToLocalTime());
+        editTTN = sale.TTN ?? "";
+        editSoldThrough = sale.SoldThrough ?? "";
+        editAdditionalService = sale.AdditionalService ?? "";
+        editError = "";
+        showEditSaleModal = true;
+        StateHasChanged();
+    }
+
+    private void CloseEditSaleModal()
+    {
+        showEditSaleModal = false;
+        saleToEdit = null;
+        editError = "";
+        StateHasChanged();
+    }
+
+    private async Task UpdateSale()
+    {
+        if (saleToEdit == null) return;
+
+        editError = "";
+
+        // Validation
+        if (string.IsNullOrWhiteSpace(editBuyer))
+        {
+            editError = "Укажите покупателя!";
+            StateHasChanged();
+            return;
+        }
+
+        try
+        {
+            using var context = await DbContextFactory.CreateDbContextAsync();
+
+            // Load sale with tracking
+            var sale = await context.Sales.FindAsync(saleToEdit.Id);
+            if (sale == null)
+            {
+                editError = "Продажа не найдена!";
+                StateHasChanged();
+                return;
+            }
+
+            // Update editable fields
+            sale.Buyer = editBuyer.Trim();
+            sale.SaleDate = editSaleDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+            sale.TTN = string.IsNullOrWhiteSpace(editTTN) ? null : editTTN.Trim();
+            sale.SoldThrough = string.IsNullOrWhiteSpace(editSoldThrough) ? null : editSoldThrough.Trim();
+            sale.AdditionalService = string.IsNullOrWhiteSpace(editAdditionalService) ? null : editAdditionalService.Trim();
+            sale.UpdatedAt = DateTime.UtcNow;
+
+            await context.SaveChangesAsync();
+
+            // Reload sales list
+            await LoadSales();
+
+            CloseEditSaleModal();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            editError = "Продажа была изменена другим пользователем. Пожалуйста, обновите страницу.";
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            editError = $"Ошибка при обновлении: {ex.Message}";
+            StateHasChanged();
         }
     }
 
