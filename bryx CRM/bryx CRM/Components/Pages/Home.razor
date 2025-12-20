@@ -845,8 +845,8 @@
     private List<Product> favoriteProducts = new();
 
     // Фильтры для графика
-    private DateTime dateFrom = DateTime.UtcNow.AddMonths(-1);
-    private DateTime dateTo = DateTime.UtcNow;
+    private DateTime dateFrom = DateTime.UtcNow.Date.AddMonths(-1);
+    private DateTime dateTo = DateTime.UtcNow.Date;
     private string selectedCategory = "";
     private string selectedModel = "";
     private string selectedColor = "";
@@ -904,7 +904,7 @@
 
     private void SetPeriod(int days)
     {
-        dateTo = DateTime.UtcNow;
+        dateTo = DateTime.UtcNow.Date;
         dateFrom = dateTo.AddDays(-days);
     }
 
@@ -917,8 +917,9 @@
             .Select(p => p.CreatedAt)
             .FirstOrDefaultAsync();
 
-        dateFrom = minDate != default ? minDate : DateTime.UtcNow.AddYears(-5);
-        dateTo = DateTime.UtcNow;
+        // Убираем время, оставляем только дату (начало дня в UTC)
+        dateFrom = (minDate != default ? minDate : DateTime.UtcNow.AddYears(-5)).Date;
+        dateTo = DateTime.UtcNow.Date;
     }
 
     // Методы для обновления статистики при изменении периода
@@ -934,7 +935,7 @@
 
     private async Task SetPeriodAndReload(int days)
     {
-        dateTo = DateTime.UtcNow;
+        dateTo = DateTime.UtcNow.Date;
         dateFrom = dateTo.AddDays(-days);
         await OnPeriodChanged();
     }
