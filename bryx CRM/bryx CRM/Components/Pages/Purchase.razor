@@ -2035,7 +2035,9 @@
                             Subcategory = purchase.Subcategory,
                             Name = productName,
                             Color = productColor,
-                            PurchasePrice = editPriceInUSD.Value / newQuantity,
+                            PriceInUSD = editPriceInUSD.Value / newQuantity,
+                            ExchangeRate = editExchangeRate.Value,
+                            PurchasePrice = (editPriceInUSD.Value * editExchangeRate.Value) / newQuantity,
                             Supplier = purchase.Supplier,
                             Status = "Ожидается",
                             PurchaseId = purchase.Id,
@@ -2058,13 +2060,16 @@
 
             // Пересчитываем цены для всех Products
             decimal pricePerUnitUSD = editPriceInUSD.Value / newQuantity;
+            decimal pricePerUnitUAH = (editPriceInUSD.Value * editExchangeRate.Value) / newQuantity;
 
             foreach (var product in purchase.Products.Where(p => context.Entry(p).State != EntityState.Deleted))
             {
                 product.Category = purchase.Category;
                 product.Subcategory = purchase.Subcategory;
                 product.Supplier = purchase.Supplier;
-                product.PurchasePrice = pricePerUnitUSD;
+                product.PriceInUSD = pricePerUnitUSD;
+                product.ExchangeRate = editExchangeRate.Value;
+                product.PurchasePrice = pricePerUnitUAH;
                 product.UpdatedAt = DateTime.UtcNow;
             }
 
