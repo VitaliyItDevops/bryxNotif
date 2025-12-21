@@ -373,6 +373,84 @@ public class BotApiController : ControllerBase
         }
     }
 
+    [HttpPost("users/register")]
+    [IgnoreAntiforgeryToken]
+    public async Task<IActionResult> RegisterBotUser([FromBody] BotUserRegistrationRequest request)
+    {
+        try
+        {
+            await using var context = await _dbContextFactory.CreateDbContextAsync();
+
+            if (string.IsNullOrEmpty(request.Username) || string.IsNullOrEmpty(request.ChatId))
+            {
+                return BadRequest(new { error = "Username и ChatId обязательны" });
+            }
+
+            // Нормализуем username
+            var normalizedUsername = request.Username.TrimStart('@').ToLower();
+
+            // Проверяем, существует ли уже пользователь
+            var existingUser = await context.BotUsers
+                .FirstOrDefaultAsync(u => u.Username == normalizedUsername || u.ChatId == request.ChatId);
+
+            if (existingUser != null)
+            {
+                // Обновляем данные если что-то изменилось
+                bool updated = false;
+                if (string.IsNullOrEmpty(existingUser.ChatId) && !string.IsNullOrEmpty(request.ChatId))
+                {
+                    existingUser.ChatId = request.ChatId;
+                    updated = true;
+                }
+                if (string.IsNullOrEmpty(existingUser.Username) && !string.IsNullOrEmpty(normalizedUsername))
+                {
+                    existingUser.Username = normalizedUsername;
+                    updated = true;
+                }
+                if (updated)
+                {
+                    existingUser.UpdatedAt = DateTime.UtcNow;
+                    await context.SaveChangesAsync();
+                }
+
+                return Ok(new
+                {
+                    message = "Пользователь уже зарегистрирован",
+                    isConfirmed = existingUser.IsConfirmed,
+                    userId = existingUser.Id
+                });
+            }
+
+            // Создаем нового пользователя (IsConfirmed = false по умолчанию)
+            var newUser = new BotUser
+            {
+                Username = normalizedUsername,
+                ChatId = request.ChatId,
+                Name = request.FirstName + (!string.IsNullOrEmpty(request.LastName) ? " " + request.LastName : ""),
+                IsActive = true,
+                IsConfirmed = false, // Требуется подтверждение администратора
+                CreatedAt = DateTime.UtcNow
+            };
+
+            context.BotUsers.Add(newUser);
+            await context.SaveChangesAsync();
+
+            _logger.LogInformation("New bot user registered: @{Username} (ChatId: {ChatId})", normalizedUsername, request.ChatId);
+
+            return Ok(new
+            {
+                message = "Регистрация успешна. Ожидайте подтверждения администратора.",
+                isConfirmed = false,
+                userId = newUser.Id
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Ошибка при регистрации пользователя бота");
+            return StatusCode(500, new { error = "Внутренняя ошибка сервера" });
+        }
+    }
+
     [HttpGet("users")]
     [IgnoreAntiforgeryToken]
     public async Task<IActionResult> GetAllowedUsers()
@@ -381,21 +459,22 @@ public class BotApiController : ControllerBase
         {
             await using var context = await _dbContextFactory.CreateDbContextAsync();
 
+            // Возвращаем только подтвержденных и активных пользователей
             var botUsers = await context.BotUsers
-                .Where(u => u.IsActive)
+                .Where(u => u.IsActive && u.IsConfirmed)
                 .ToListAsync();
 
-            // Возвращаем список username (приоритет) или ChatId (fallback для старых записей)
+            // Возвращаем только username (проверка только по нему)
             var allowedUsers = botUsers
-                .Select(u => !string.IsNullOrEmpty(u.Username) ? u.Username : u.ChatId)
-                .Where(id => !string.IsNullOrEmpty(id))
+                .Where(u => !string.IsNullOrEmpty(u.Username))
+                .Select(u => u.Username!)
                 .ToList();
 
-            _logger.LogInformation("Retrieved {Count} allowed bot users", allowedUsers.Count);
+            _logger.LogInformation("Retrieved {Count} confirmed bot users", allowedUsers.Count);
 
             return Ok(new
             {
-                allowedUsers = allowedUsers!,
+                allowedUsers = allowedUsers,
                 count = allowedUsers.Count
             });
         }
@@ -405,4 +484,12 @@ public class BotApiController : ControllerBase
             return StatusCode(500, new { error = "Внутренняя ошибка сервера" });
         }
     }
+}
+
+public class BotUserRegistrationRequest
+{
+    public string Username { get; set; } = string.Empty;
+    public string ChatId { get; set; } = string.Empty;
+    public string? FirstName { get; set; }
+    public string? LastName { get; set; }
 }

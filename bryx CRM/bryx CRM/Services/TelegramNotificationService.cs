@@ -1,4 +1,6 @@
+using bryx_CRM.Data;
 using bryx_CRM.Data.Models;
+using Microsoft.EntityFrameworkCore;
 using System.Text;
 using System.Text.Json;
 
@@ -9,15 +11,18 @@ public class TelegramNotificationService
     private readonly HttpClient _httpClient;
     private readonly ILogger<TelegramNotificationService> _logger;
     private readonly IConfiguration _configuration;
+    private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
 
     public TelegramNotificationService(
         IHttpClientFactory httpClientFactory,
         ILogger<TelegramNotificationService> logger,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        IDbContextFactory<ApplicationDbContext> dbContextFactory)
     {
         _httpClient = httpClientFactory.CreateClient();
         _logger = logger;
         _configuration = configuration;
+        _dbContextFactory = dbContextFactory;
     }
 
     public async Task SendSaleNotification(Sale sale, List<Product> products)
@@ -25,13 +30,26 @@ public class TelegramNotificationService
         try
         {
             var botToken = _configuration["TelegramBot:BotToken"];
-            var chatId = _configuration["TelegramBot:ChatId"];
 
-            if (string.IsNullOrEmpty(botToken) || string.IsNullOrEmpty(chatId))
+            if (string.IsNullOrEmpty(botToken))
             {
-                _logger.LogWarning("Telegram bot configuration is missing. Skipping notification.");
+                _logger.LogWarning("Telegram bot token is missing. Skipping notification.");
                 return;
             }
+
+            // Получаем всех подтвержденных пользователей из БД
+            await using var context = await _dbContextFactory.CreateDbContextAsync();
+            var confirmedUsers = await context.BotUsers
+                .Where(u => u.IsActive && u.IsConfirmed && !string.IsNullOrEmpty(u.ChatId))
+                .ToListAsync();
+
+            if (!confirmedUsers.Any())
+            {
+                _logger.LogWarning("No confirmed bot users found. Skipping notification.");
+                return;
+            }
+
+            _logger.LogInformation("Sending sale notification to {Count} confirmed users", confirmedUsers.Count);
 
             // Формируем сообщение
             var messageBuilder = new StringBuilder();
@@ -81,33 +99,51 @@ public class TelegramNotificationService
                 }
             };
 
-            // Отправляем сообщение
-            var payload = new
+            // Отправляем сообщение всем подтвержденным пользователям
+            var successCount = 0;
+            var failCount = 0;
+
+            foreach (var user in confirmedUsers)
             {
-                chat_id = chatId,
-                text = messageBuilder.ToString(),
-                parse_mode = "HTML",
-                reply_markup = keyboard
-            };
+                try
+                {
+                    var payload = new
+                    {
+                        chat_id = user.ChatId,
+                        text = messageBuilder.ToString(),
+                        parse_mode = "HTML",
+                        reply_markup = keyboard
+                    };
 
-            var json = JsonSerializer.Serialize(payload);
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
+                    var json = JsonSerializer.Serialize(payload);
+                    var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-            var response = await _httpClient.PostAsync(
-                $"https://api.telegram.org/bot{botToken}/sendMessage",
-                content
-            );
+                    var response = await _httpClient.PostAsync(
+                        $"https://api.telegram.org/bot{botToken}/sendMessage",
+                        content
+                    );
 
-            if (!response.IsSuccessStatusCode)
-            {
-                var errorContent = await response.Content.ReadAsStringAsync();
-                _logger.LogError("Failed to send Telegram notification. Status: {StatusCode}, Error: {Error}",
-                    response.StatusCode, errorContent);
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        var errorContent = await response.Content.ReadAsStringAsync();
+                        _logger.LogError("Failed to send notification to @{Username} (ChatId: {ChatId}). Status: {StatusCode}, Error: {Error}",
+                            user.Username, user.ChatId, response.StatusCode, errorContent);
+                        failCount++;
+                    }
+                    else
+                    {
+                        _logger.LogInformation("Notification sent to @{Username} (ChatId: {ChatId})", user.Username, user.ChatId);
+                        successCount++;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error sending notification to @{Username} (ChatId: {ChatId})", user.Username, user.ChatId);
+                    failCount++;
+                }
             }
-            else
-            {
-                _logger.LogInformation("Sale notification sent successfully to Telegram chat {ChatId}", chatId);
-            }
+
+            _logger.LogInformation("Sale notification sent: {Success} successful, {Failed} failed", successCount, failCount);
         }
         catch (Exception ex)
         {
